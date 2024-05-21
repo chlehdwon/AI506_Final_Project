@@ -1,0 +1,16 @@
+*/.ipynb_checkpoints/
+.ipynb_checkpoints/
+*/*/.ipynb_checkpoints/
+*/__pycache__/*
+__pycache__/
+results_test/
+nongraph_results/
+dataset/AMinerAuthor/
+dataset/DBLP/
+dataset/emailEnron/
+dataset/emailEu/
+dataset/StackOverflowBiology/
+dataset/StackOverflowPhyscis/
+results/
+Untitled.ipynb
+*.sh
