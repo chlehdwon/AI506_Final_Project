@@ -31,14 +31,8 @@ from preprocess.batch import DataLoader
 from initialize.initial_embedder import MultipleEmbedding
 from initialize.random_walk_hyper import random_walk_hyper
 
-from model.HNHN import HNHN
-from model.HGNN import HGNN
-from model.HAT import HyperAttn
-from model.HNN import HNN
-from model.UniGCN import UniGCNII
 from model.Whatsnet import Whatsnet, WhatsnetLayer
 from model.layer import FC, Wrap_Embedding
-from model.HCHA import HCHA
 
 # Make Output Directory --------------------------------------------------------------------------------------------------------------
 initialization = "rw"
@@ -107,17 +101,7 @@ if args.use_gpu:
         test_data = test_data.to(device)
     data.e_feat = data.e_feat.to(device)
     
-if args.embedder == "hcha" or args.embedder == "hnn":
-    test_edata, test_vdata, test_label = [], [], []
-    for hedge in test_data:
-        for vidx, v in enumerate(data.hedge2node[hedge]):
-            test_edata.append(hedge)
-            test_vdata.append(v)
-            test_label.append(data.hedge2nodepos[hedge][vidx])
-    g = g.to(device)
-    test_label = torch.LongTensor(test_label).to(device)
-else:
-    testdataloader = dgl.dataloading.NodeDataLoader(g, {"edge": test_data}, fullsampler, batch_size=args.bs, shuffle=False, drop_last=False)
+testdataloader = dgl.dataloading.NodeDataLoader(g, {"edge": test_data}, fullsampler, batch_size=args.bs, shuffle=False, drop_last=False)
 
 args.input_vdim = data.v_feat.size(1)
 args.input_edim = data.e_feat.size(1)
@@ -162,23 +146,7 @@ initembedder.weight = nn.Parameter(A)
 
 print("Model:", args.embedder)
 # model init
-if args.embedder == "hnhn":
-    embedder = HNHN(args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, args.num_layers, args.dropout).to(device)
-elif args.embedder == "hgnn":
-    embedder = HGNN(args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, args.num_layers, args.dropout).to(device)
-elif args.embedder == "hat":
-    embedder = HyperAttn(args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, weight_dim=0, num_layer=args.num_layers, dropout=args.dropout).to(device)
-elif args.embedder == "unigcnii":
-    embedder = UniGCNII(args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, num_layer=args.num_layers, dropout=args.dropout).to(device)
-elif args.embedder == "hcha":
-    embedder = HCHA(args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, num_layers=args.num_layers, num_heads=args.num_heads, feat_drop=args.dropout).to(device)
-elif args.embedder == "hnn":
-    args.input_edim = args.input_vdim
-    avgflag = False
-    if args.efeat == "avg":
-        avgflag = True
-    embedder = HNN(args.input_vdim, args.input_vdim, args.dim_hidden, args.dim_vertex, args.dim_edge, num_psi_layer=args.psi_num_layers, num_layers=args.num_layers, feat_drop=args.dropout, avginit=avgflag).to(device)
-elif args.embedder == "whatsnet":    
+if args.embedder == "whatsnet":    
     input_vdim = args.input_vdim
     pe_ablation_flag = args.pe_ablation
     embedder = Whatsnet(WhatsnetLayer, input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, 
@@ -209,105 +177,58 @@ node2ansrole = {}
 nodes = torch.LongTensor(range(data.numnodes)).to(device)
 
 with torch.no_grad():
-    if args.embedder == "hcha" or args.embedder == "hnn":
-        v_feat, recon_loss = initembedder(nodes)
-        e_feat = torch.zeros((data.numhedges, args.input_vdim)).to(device)
-        if args.embedder == "hcha":
-            v, e = embedder(g, v_feat, e_feat, data.DV2, data.invDE)
-        elif args.embedder == "hnn":
-            v, e = embedder(g, v_feat, e_feat, data.invDV, data.invDE, data.vMat, data.eMat)
-        hembedding = e[test_edata]
-        vembedding = v[test_vdata]
+    for input_nodes, output_nodes, blocks in tqdm(testdataloader):     
+        # Wrap up loader
+        blocks = [b.to(device) for b in blocks]
+        srcs, dsts = blocks[-1].edges(etype='in')
+        nodeindices_in_batch = srcs.to(device)
+        nodeindices = blocks[-1].srcdata[dgl.NID]['node'][srcs]
+        hedgeindices_in_batch = dsts.to(device)
+        hedgeindices = blocks[-1].dstdata[dgl.NID]['edge'][dsts]
+        nodelabels = blocks[-1].edges[('node','in','edge')].data['label'].long().to(device)
+
+        # Get Embedding
+        v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
+        e_feat = data.e_feat[input_nodes['edge']].to(device)
+        v, e = embedder(blocks, v_feat, e_feat)
+
+        # Predict Class
+        hembedding = e[hedgeindices_in_batch]
+        vembedding = v[nodeindices_in_batch]
         input_embeddings = torch.cat([hembedding,vembedding], dim=1)
         predictions = scorer(input_embeddings)
+
+        total_pred.append(predictions.detach())
+        total_label.append(nodelabels.detach())
+
         pred_cls = torch.argmax(predictions, dim=1)
-        eval_acc = torch.eq(pred_cls, test_label).sum().item() / len(test_label)
-        y_test = test_label.detach().cpu().numpy()
-        pred = pred_cls.detach().cpu().numpy()
-        
-        for hedge, node, predlabel, anslabel in zip(test_edata, test_vdata, pred_cls.detach().cpu().numpy().tolist(), test_label.detach().cpu().numpy().tolist()):
-            hedge, node, predlabel, anslabel = int(hedge), int(node), int(predlabel), int(anslabel)
-            if node not in node2predrole:
-                node2predrole[node] = np.zeros(args.output_dim)
-                node2ansrole[node] = np.zeros(args.output_dim)
+        for v, h, vpred, vlab in zip(nodeindices.tolist(), hedgeindices.tolist(), pred_cls.detach().cpu().tolist(), nodelabels.detach().cpu().tolist()):
+            v, h, vpred, vlab = int(v), int(h), int(vpred), int(vlab)
+            if v not in data.hedge2node[h]:
+                print(data.hedge2node[h])
+                print(v)
+            assert v in data.hedge2node[h]
+            assert h in data.node2hedge[v]
+            existflag = False
+            for vorder, _v in enumerate(data.hedge2node[h]):
+                if _v == v:
+                    if data.hedge2nodepos[h][vorder] == vlab:
+                        existflag = True
+            assert existflag
 
-            node2predrole[node][predlabel] += 1
-            node2ansrole[node][anslabel] += 1  
-        
-    else:
-        for input_nodes, output_nodes, blocks in tqdm(testdataloader):     
-            # Wrap up loader
-            blocks = [b.to(device) for b in blocks]
-            srcs, dsts = blocks[-1].edges(etype='in')
-            nodeindices_in_batch = srcs.to(device)
-            nodeindices = blocks[-1].srcdata[dgl.NID]['node'][srcs]
-            hedgeindices_in_batch = dsts.to(device)
-            hedgeindices = blocks[-1].dstdata[dgl.NID]['edge'][dsts]
-            nodelabels = blocks[-1].edges[('node','in','edge')].data['label'].long().to(device)
+            if v not in node2predrole:
+                node2predrole[v] = np.zeros(args.output_dim)
+                node2ansrole[v] = np.zeros(args.output_dim)
 
-            # Get Embedding
-            if args.embedder == "hnhn":
-                v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
-                e_feat = data.e_feat[input_nodes['edge']].to(device)
-                v_reg_weight = data.v_reg_weight[input_nodes['node']].to(device)
-                v_reg_sum = data.v_reg_sum[input_nodes['node']].to(device)
-                e_reg_weight = data.e_reg_weight[input_nodes['edge']].to(device)
-                e_reg_sum = data.e_reg_sum[input_nodes['edge']].to(device)
-                v, e = embedder(blocks, v_feat, e_feat, v_reg_weight, v_reg_sum, e_reg_weight, e_reg_sum)
-            elif args.embedder == "hgnn":
-                v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
-                e_feat = data.e_feat[input_nodes['edge']].to(device)
-                DV2 = data.DV2[input_nodes['node']].to(device)
-                invDE = data.invDE[input_nodes['edge']].to(device)
-                v, e = embedder(blocks, v_feat, e_feat, DV2, invDE)
-            elif args.embedder == "unigcnii":
-                v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
-                e_feat = data.e_feat[input_nodes['edge']].to(device)
-                degV = data.degV[input_nodes['node']].to(device)
-                degE = data.degE[input_nodes['edge']].to(device)
-                v, e = embedder(blocks, v_feat, e_feat, degE, degV)
-            else:
-                v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
-                e_feat = data.e_feat[input_nodes['edge']].to(device)
-                v, e = embedder(blocks, v_feat, e_feat)
-
-            # Predict Class
-            hembedding = e[hedgeindices_in_batch]
-            vembedding = v[nodeindices_in_batch]
-            input_embeddings = torch.cat([hembedding,vembedding], dim=1)
-            predictions = scorer(input_embeddings)
-
-            total_pred.append(predictions.detach())
-            total_label.append(nodelabels.detach())
-
-            pred_cls = torch.argmax(predictions, dim=1)
-            for v, h, vpred, vlab in zip(nodeindices.tolist(), hedgeindices.tolist(), pred_cls.detach().cpu().tolist(), nodelabels.detach().cpu().tolist()):
-                v, h, vpred, vlab = int(v), int(h), int(vpred), int(vlab)
-                if v not in data.hedge2node[h]:
-                    print(data.hedge2node[h])
-                    print(v)
-                assert v in data.hedge2node[h]
-                assert h in data.node2hedge[v]
-                existflag = False
-                for vorder, _v in enumerate(data.hedge2node[h]):
-                    if _v == v:
-                        if data.hedge2nodepos[h][vorder] == vlab:
-                            existflag = True
-                assert existflag
-
-                if v not in node2predrole:
-                    node2predrole[v] = np.zeros(args.output_dim)
-                    node2ansrole[v] = np.zeros(args.output_dim)
-
-                node2predrole[v][vpred] += 1
-                node2ansrole[v][vlab] += 1  
-                
-        total_label = torch.cat(total_label, dim=0)
-        total_pred = torch.cat(total_pred)
-        pred_cls = torch.argmax(total_pred, dim=1)
-        eval_acc = torch.eq(pred_cls, total_label).sum().item() / len(total_label)
-        y_test = total_label.cpu().numpy()
-        pred = pred_cls.cpu().numpy()
+            node2predrole[v][vpred] += 1
+            node2ansrole[v][vlab] += 1  
+            
+    total_label = torch.cat(total_label, dim=0)
+    total_pred = torch.cat(total_pred)
+    pred_cls = torch.argmax(total_pred, dim=1)
+    eval_acc = torch.eq(pred_cls, total_label).sum().item() / len(total_label)
+    y_test = total_label.cpu().numpy()
+    pred = pred_cls.cpu().numpy()
             
 # Compare Test F1 -----------------------------------------------------------------------
 confusion, accuracy, precision, recall, f1_micro = utils.get_clf_eval(y_test, pred, avg='micro')
