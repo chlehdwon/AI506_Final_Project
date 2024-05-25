@@ -28,10 +28,6 @@ from preprocess.batch import DataLoader
 from initialize.initial_embedder import MultipleEmbedding
 from initialize.random_walk_hyper import random_walk_hyper
 
-from model.HNHN import HNHN
-from model.HGNN import HGNN
-from model.HAT import HyperAttn
-from model.UniGCN import UniGCNII
 from model.Whatsnet import Whatsnet, WhatsnetLayer
 from model.WhatsnetIM import WhatsnetIM
 from model.WhatsnetLSPE import WhatsnetLSPE, WhatsnetLSPELayer
@@ -61,35 +57,7 @@ def run_epoch(args, data, dataloader, initembedder, embedder, scorer, optim, sch
         
         batchcount += 1
         # Get Embedding
-        if args.embedder == "hnhn":
-            v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
-            e_feat = data.e_feat[input_nodes['edge']].to(device)
-            v_reg_weight = data.v_reg_weight[input_nodes['node']].to(device)
-            v_reg_sum = data.v_reg_sum[input_nodes['node']].to(device)
-            e_reg_weight = data.e_reg_weight[input_nodes['edge']].to(device)
-            e_reg_sum = data.e_reg_sum[input_nodes['edge']].to(device)
-            v, e = embedder(blocks, v_feat, e_feat, v_reg_weight, v_reg_sum, e_reg_weight, e_reg_sum)
-        elif args.embedder == "whatsnetHNHN":
-            v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
-            e_feat = data.e_feat[input_nodes['edge']].to(device)
-            v_reg_weight = data.v_reg_weight[input_nodes['node']].to(device)
-            v_reg_sum = data.v_reg_sum[input_nodes['node']].to(device)
-            e_reg_weight = data.e_reg_weight[input_nodes['edge']].to(device)
-            e_reg_sum = data.e_reg_sum[input_nodes['edge']].to(device)
-            v, e = embedder(blocks, v_feat, e_feat, e_reg_weight, v_reg_sum)
-        elif args.embedder == "hgnn":
-            v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
-            e_feat = data.e_feat[input_nodes['edge']].to(device)
-            DV2 = data.DV2[input_nodes['node']].to(device)
-            invDE = data.invDE[input_nodes['edge']].to(device)
-            v, e = embedder(blocks, v_feat, e_feat, DV2, invDE)
-        elif args.embedder == "unigcnii":
-            v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
-            e_feat = data.e_feat[input_nodes['edge']].to(device)
-            degV = data.degV[input_nodes['node']].to(device)
-            degE = data.degE[input_nodes['edge']].to(device)
-            v, e = embedder(blocks, v_feat, e_feat, degE, degV)
-        elif args.embedder == "whatsnetLSPE":
+        if args.embedder == "whatsnetLSPE":
             v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
             e_feat = data.e_feat[input_nodes['edge']].to(device)
             v_pos = data.v_pos[input_nodes['node']].to(device)
@@ -165,35 +133,7 @@ def run_test_epoch(args, data, testdataloader, initembedder, embedder, scorer, l
         
         batchcount += 1
         # Get Embedding
-        if args.embedder == "hnhn":
-            v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
-            e_feat = data.e_feat[input_nodes['edge']].to(device)
-            v_reg_weight = data.v_reg_weight[input_nodes['node']].to(device)
-            v_reg_sum = data.v_reg_sum[input_nodes['node']].to(device)
-            e_reg_weight = data.e_reg_weight[input_nodes['edge']].to(device)
-            e_reg_sum = data.e_reg_sum[input_nodes['edge']].to(device)
-            v, e = embedder(blocks, v_feat, e_feat, v_reg_weight, v_reg_sum, e_reg_weight, e_reg_sum)
-        elif args.embedder == "whatsnetHNHN":
-            v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
-            e_feat = data.e_feat[input_nodes['edge']].to(device)
-            v_reg_weight = data.v_reg_weight[input_nodes['node']].to(device)
-            v_reg_sum = data.v_reg_sum[input_nodes['node']].to(device)
-            e_reg_weight = data.e_reg_weight[input_nodes['edge']].to(device)
-            e_reg_sum = data.e_reg_sum[input_nodes['edge']].to(device)
-            v, e = embedder(blocks, v_feat, e_feat, e_reg_weight, v_reg_sum)
-        elif args.embedder == "hgnn":
-            v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
-            e_feat = data.e_feat[input_nodes['edge']].to(device)
-            DV2 = data.DV2[input_nodes['node']].to(device)
-            invDE = data.invDE[input_nodes['edge']].to(device)
-            v, e = embedder(blocks, v_feat, e_feat, DV2, invDE)
-        elif args.embedder == "unigcnii":
-            v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
-            e_feat = data.e_feat[input_nodes['edge']].to(device)
-            degV = data.degV[input_nodes['node']].to(device)
-            degE = data.degE[input_nodes['edge']].to(device)
-            v, e = embedder(blocks, v_feat, e_feat, degE, degV)
-        elif args.embedder == "whatsnetLSPE":
+        if args.embedder == "whatsnetLSPE":
             v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
             e_feat = data.e_feat[input_nodes['edge']].to(device)
             v_pos = data.v_pos[input_nodes['node']].to(device)
@@ -360,6 +300,8 @@ if args.orderflag:
     args.input_vdim = 44
 savefname = "../%s_%d_wv_%d_%s.npy" % (args.dataset_name, args.k, args.input_vdim, args.walk)
 node_list = np.arange(data.numnodes).astype('int')
+
+# A: (data.numnodes, vector_size)의 embedding 생성, 이는 초기 node embedding으로 사용
 if os.path.isfile(savefname) is False:
     walk_path = random_walk_hyper(args, node_list, data.hedge2node)
     walks = np.loadtxt(walk_path, delimiter=" ").astype('int')
@@ -395,15 +337,7 @@ initembedder.weight = nn.Parameter(A)
 
 print("Model:", args.embedder)
 # model init
-if args.embedder == "hnhn":
-    embedder = HNHN(args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, args.num_layers, args.dropout).to(device)
-elif args.embedder == "hgnn":
-    embedder = HGNN(args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, args.num_layers, args.dropout).to(device)
-elif args.embedder == "hat":
-    embedder = HyperAttn(args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, weight_dim=0, num_layer=args.num_layers, dropout=args.dropout).to(device)   
-elif args.embedder == "unigcnii":
-    embedder = UniGCNII(args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, num_layer=args.num_layers, dropout=args.dropout).to(device)
-elif args.embedder == "whatsnetLSPE":
+if args.embedder == "whatsnetLSPE":
     embedder = WhatsnetLSPE(WhatsnetLSPELayer, args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, 
                            weight_dim=args.order_dim, num_heads=args.num_heads, num_layers=args.num_layers, num_inds=args.num_inds,
                            att_type_v=args.att_type_v, agg_type_v=args.agg_type_v, att_type_e=args.att_type_e, agg_type_e=args.agg_type_e,
@@ -436,14 +370,8 @@ if args.scorer == "sm":
     scorer = FC(args.dim_vertex + args.dim_edge, args.dim_edge, args.output_dim, args.scorer_num_layers, args.dropout).to(device)
 elif args.scorer == "im": #whatsnet
     scorer = WhatsnetIM(args.dim_vertex, args.output_dim, dim_hidden=args.dim_hidden, num_layer=args.scorer_num_layers).to(device)
-    
-if args.embedder == "unigcnii":
-    optim = torch.optim.Adam([
-            dict(params=embedder.reg_params, weight_decay=0.01),
-            dict(params=embedder.non_reg_params, weight_decay=5e-4),
-            dict(params=list(initembedder.parameters()) + list(scorer.parameters()), weight_decay=0.0)
-        ], lr=0.01)
-elif args.optimizer == "adam":
+
+if args.optimizer == "adam":
     optim = torch.optim.Adam(list(initembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr) #, weight_decay=args.weight_decay)
 elif args.optimizer == "adamw":
     optim = torch.optim.AdamW(list(initembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr)

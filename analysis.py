@@ -28,10 +28,6 @@ from preprocess.batch import DataLoader
 from initialize.initial_embedder import MultipleEmbedding
 from initialize.random_walk_hyper import random_walk_hyper
 
-from model.HNHN import HNHN
-from model.HGNN import HGNN
-from model.HAT import HyperAttn
-from model.UniGCN import UniGCNII
 from model.Whatsnet import Whatsnet, WhatsnetLayer
 from model.WhatsnetClassifier import WhatsnetClassifier
 from model.layer import FC, Wrap_Embedding
@@ -157,15 +153,7 @@ initembedder = initembedder.to(device)
 
 print("Model:", args.embedder)
 # model init
-if args.embedder == "hnhn":
-    embedder = HNHN(args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, args.num_layers, args.dropout).to(device)
-elif args.embedder == "hgnn":
-    embedder = HGNN(args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, args.num_layers, args.dropout).to(device)
-elif args.embedder == "hat":
-    embedder = HyperAttn(args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, weight_dim=0, num_layer=args.num_layers, dropout=args.dropout).to(device)   
-elif args.embedder == "unigcnii":
-    embedder = UniGCNII(args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, num_layer=args.num_layers, dropout=args.dropout).to(device)
-elif args.embedder == "whatsnet":    
+if args.embedder == "whatsnet":    
     input_vdim = args.input_vdim
     pe_ablation_flag = args.pe_ablation
     embedder = Whatsnet(WhatsnetLayer, input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, 
