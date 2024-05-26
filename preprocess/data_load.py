@@ -397,6 +397,7 @@ def gen_weighted_DGLGraph(args, hedge2node, hedge2nodePE, hedge2nodepos, node2he
     
     for hidx, hedge in enumerate(hedge2node):
         for vorder, v in enumerate(hedge):
+
             # connection
             data_dict[('node', 'in', 'edge')].append((v, hidx))
             data_dict[('edge', 'con', 'node')].append((hidx, v))
