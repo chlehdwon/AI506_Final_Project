@@ -35,7 +35,7 @@ from model.WhatsnetHAT import WhatsnetHAT, WhatsnetHATLayer
 from model.WhatsnetHNHN import WhatsnetHNHN, WhatsnetHNHNLayer
 from model.layer import FC, Wrap_Embedding
 
-def run_epoch(args, data, dataloader, initembedder, embedder, scorer, optim, scheduler, loss_fn, opt="train"):
+def run_epoch(args, data, dataloader, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, optim, scheduler, loss_fn, opt="train"):
     total_pred = []
     total_label = []
     num_data = 0
@@ -73,6 +73,13 @@ def run_epoch(args, data, dataloader, initembedder, embedder, scorer, optim, sch
             else:
                 v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
                 e_feat = data.e_feat[input_nodes['edge']].to(device)
+                # concat feature embedding
+                customer_feat, _ = customerembedder(data.hedge2customer[input_nodes['edge']].long().to(device))
+                color_feat, _ = colorembedder(data.node2color[input_nodes['node']].long().to(device))
+                size_feat, _ = sizeembedder(data.node2size[input_nodes['node']].long().to(device))
+                group_feat, _ = groupembedder(data.node2group[input_nodes['node']].long().to(device))
+                v_feat = torch.concat((v_feat, color_feat, size_feat, group_feat), dim=1)
+                e_feat = torch.concat((e_feat, customer_feat), dim=1)
                 v, e = embedder(blocks, v_feat, e_feat)
         else:
                 v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
@@ -154,9 +161,9 @@ def run_epoch(args, data, dataloader, initembedder, embedder, scorer, optim, sch
     print("Time : ", time.time() - ts)
     print(num_data)
     
-    return total_pred, total_label, total_loss / num_data, total_ce_loss / num_data, total_recon_loss / num_recon_data, initembedder, embedder, scorer, optim, scheduler
+    return total_pred, total_label, total_loss / num_data, total_ce_loss / num_data, total_recon_loss / num_recon_data, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, optim, scheduler
 
-def run_test_epoch(args, data, testdataloader, initembedder, embedder, scorer, loss_fn):
+def run_test_epoch(args, data, testdataloader, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, loss_fn):
     total_pred = []
     total_label = []
     num_data = 0
@@ -231,7 +238,7 @@ def run_test_epoch(args, data, testdataloader, initembedder, embedder, scorer, l
         total_ce_loss += (ce_loss.item() * predictions.shape[0])
         total_recon_loss += (recon_loss.item() * input_nodes['node'].shape[0]) # This is fixed as zero
         
-    return total_pred, total_label, total_loss / num_data, total_ce_loss / num_data, total_recon_loss / num_recon_data, initembedder, embedder, scorer
+    return total_pred, total_label, total_loss / num_data, total_ce_loss / num_data, total_recon_loss / num_recon_data, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer
 
 # Make Output Directory --------------------------------------------------------------------------------------------------------------
 initialization = "rw"
@@ -309,6 +316,14 @@ else:
         
     if os.path.isfile(outputdir + "initembedder.pt"):
         os.remove(outputdir + "initembedder.pt")
+    if os.path.isfile(outputdir + "customerembedder.pt"):
+        os.remove(outputdir + "customerembedder.pt")
+    if os.path.isfile(outputdir + "colorembedder.pt"):
+        os.remove(outputdir + "colorembedder.pt")
+    if os.path.isfile(outputdir + "sizeembedder.pt"):
+        os.remove(outputdir + "sizeembedder.pt")
+    if os.path.isfile(outputdir + "groupembedder.pt"):
+        os.remove(outputdir + "groupembedder.pt")
     if os.path.isfile(outputdir + "embedder.pt"):
         os.remove(outputdir + "embedder.pt")
     if os.path.isfile(outputdir + "scorer.pt"):
@@ -396,6 +411,18 @@ A = torch.tensor(A).to(device)
 initembedder = Wrap_Embedding(data.numnodes, args.input_vdim, scale_grad_by_freq=False, padding_idx=0, sparse=False).to(device)
 initembedder.weight = nn.Parameter(A)
 
+# Make embedding with feature
+# 0-342037
+customerembedder = Wrap_Embedding(data.numcustomers, 24, scale_grad_by_freq=False, padding_idx=0, sparse=False).to(device)
+# 0-641
+colorembedder = Wrap_Embedding(data.numcolors, 8, scale_grad_by_freq=False, padding_idx=0, sparse=False).to(device)
+# 0-28
+sizeembedder = Wrap_Embedding(data.numsizes, 8, scale_grad_by_freq=False, padding_idx=0, sparse=False).to(device)
+# 0-31
+groupembedder = Wrap_Embedding(data.numgroups, 8, scale_grad_by_freq=False, padding_idx=0, sparse=False).to(device)
+# Add dimension for embeddings
+args.input_vdim = args.input_vdim + 24
+args.input_edim = args.input_edim + 24
 
 print("Model:", args.embedder)
 # model init
@@ -440,11 +467,11 @@ elif args.scorer == "im": #whatsnet
     scorer = WhatsnetIM(args.dim_vertex, args.output_dim, dim_hidden=args.dim_hidden, num_layer=args.scorer_num_layers).to(device)
 
 if args.optimizer == "adam":
-    optim = torch.optim.Adam(list(initembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr) #, weight_decay=args.weight_decay)
+    optim = torch.optim.Adam(list(initembedder.parameters())+list(customerembedder.parameters())+list(colorembedder.parameters())+list(sizeembedder.parameters())+list(groupembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr) #, weight_decay=args.weight_decay)
 elif args.optimizer == "adamw":
-    optim = torch.optim.AdamW(list(initembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr)
+    optim = torch.optim.AdamW(list(initembedder.parameters())+list(customerembedder.parameters())+list(colorembedder.parameters())+list(sizeembedder.parameters())+list(groupembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr)
 elif args.optimizer == "rms":
-    optime = torch.optim.RMSprop(list(initembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr)
+    optime = torch.optim.RMSprop(list(initembedder.parameters())+list(customerembedder.parameters())+list(colorembedder.parameters())+list(sizeembedder.parameters())+list(groupembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr)
 scheduler = torch.optim.lr_scheduler.ExponentialLR(optim, gamma=args.gamma)
 
 loss_fn = nn.CrossEntropyLoss()
@@ -458,6 +485,10 @@ if os.path.isfile(outputdir + "checkpoint.pt") and args.recalculate is False:
     checkpoint = torch.load(outputdir + "checkpoint.pt") #, map_location=device)
     epoch_start = checkpoint['epoch'] + 1
     initembedder.load_state_dict(checkpoint['initembedder'])
+    customerembedder.load_state_dict(checkpoint['customerembedder'])
+    colorembedder.load_state_dict(checkpoint['colorembedder'])
+    sizeembedder.load_state_dict(checkpoint['sizeembedder'])
+    groupembedder.load_state_dict(checkpoint['groupembedder'])
     embedder.load_state_dict(checkpoint['embedder'])
     scorer.load_state_dict(checkpoint['scorer'])
     optim.load_state_dict(checkpoint['optimizer'])
@@ -476,17 +507,28 @@ if os.path.isfile(outputdir + "checkpoint.pt") and args.recalculate is False:
         torch.save(scorer.state_dict(), scorersavename)
         initembeddersavename = outputdir + "initembedder.pt"
         torch.save(initembedder.state_dict(),initembeddersavename)
+        customerembeddersavename = outputdir + "customerembedder.pt"
+        torch.save(customerembedder.state_dict(),customerembeddersavename)
+        colorembeddersavename = outputdir + "colorembedder.pt"
+        torch.save(colorembedder.state_dict(),colorembeddersavename)
+        sizeembeddersavename = outputdir + "sizeembedder.pt"
+        torch.save(sizeembedder.state_dict(),sizeembeddersavename)
+        groupembedder = outputdir + "groupembedder.pt"
+        torch.save(groupembedder.state_dict(),groupembedder)
     
 for epoch in tqdm(range(epoch_start, args.epochs + 1), desc='Epoch'): # tqdm
     print("Training")
     
     # Training stage
     initembedder.train()
+    customerembedder.train()
+    colorembedder.train()
+    sizeembedder.train()
+    groupembedder.train()
     embedder.train()
     scorer.train()
-    
     # # Calculate Accuracy & Epoch Loss
-    total_pred, total_label, train_loss, train_ce_loss, train_recon_loss, initembedder, embedder, scorer, optim, scheduler = run_epoch(args, data, dataloader, initembedder, embedder, scorer, optim, scheduler, loss_fn, opt="train")
+    total_pred, total_label, train_loss, train_ce_loss, train_recon_loss, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, optim, scheduler = run_epoch(args, data, dataloader, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, optim, scheduler, loss_fn, opt="train")
     total_pred = torch.cat(total_pred)
     total_label = torch.cat(total_label, dim=0)
     pred_cls = torch.argmax(total_pred, dim=1)
@@ -499,11 +541,15 @@ for epoch in tqdm(range(epoch_start, args.epochs + 1), desc='Epoch'): # tqdm
     # Test ===========================================================================================================================================================================
     if epoch % test_epoch == 0:
         initembedder.eval()
+        customerembedder.eval()
+        colorembedder.eval()
+        sizeembedder.eval()
+        groupembedder.eval()
         embedder.eval()
         scorer.eval()
         
         with torch.no_grad():
-            total_pred, total_label, eval_loss, eval_ce_loss, eval_recon_loss, initembedder, embedder, scorer, optim, scheduler = run_epoch(args, data, validdataloader, initembedder, embedder, scorer, optim, scheduler, loss_fn, opt="valid")
+            total_pred, total_label, eval_loss, eval_ce_loss, eval_recon_loss, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, optim, scheduler = run_epoch(args, data, validdataloader, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, optim, scheduler, loss_fn, opt="valid")
         # Calculate Accuracy & Epoch Loss
         total_label = torch.cat(total_label, dim=0)
         total_pred = torch.cat(total_pred)
@@ -538,6 +584,14 @@ for epoch in tqdm(range(epoch_start, args.epochs + 1), desc='Epoch'): # tqdm
                 torch.save(scorer.state_dict(), scorersavename)
                 initembeddersavename = outputdir + "initembedder.pt"
                 torch.save(initembedder.state_dict(),initembeddersavename)
+                customerembeddersavename = outputdir + "customerembedder.pt"
+                torch.save(customerembedder.state_dict(),customerembeddersavename)
+                colorembeddersavename = outputdir + "colorembedder.pt"
+                torch.save(colorembedder.state_dict(),colorembeddersavename)
+                sizeembeddersavename = outputdir + "sizeembedder.pt"
+                torch.save(sizeembedder.state_dict(),sizeembeddersavename)
+                groupembedder = outputdir + "groupembedder.pt"
+                torch.save(groupembedder.state_dict(),groupembedder)
         else:
             patience += 1
 
@@ -549,6 +603,10 @@ for epoch in tqdm(range(epoch_start, args.epochs + 1), desc='Epoch'): # tqdm
             'embedder': embedder.state_dict(),
             'scorer' : scorer.state_dict(),
             'initembedder' : initembedder.state_dict(),
+            'customerembedder': customerembedder.state_dict(),
+            'colorembedder': colorembedder.state_dict(),
+            'sizeembedder': sizeembedder.state_dict(),
+            'groupembedder': groupembedder.state_dict(),
             'scheduler' : scheduler.state_dict(),
             'optimizer': optim.state_dict(),
             'best_eval_acc' : best_eval_acc,
@@ -563,11 +621,15 @@ for epoch in tqdm(range(epoch_start, args.epochs + 1), desc='Epoch'): # tqdm
 #     scorer.load_state_dict(torch.load(outputdir + "scorer.pt")) # , map_location=device
     
 #     initembedder.eval()
+#     customerembedder.eval()
+#     colorembedder.eval()
+#     sizeembedder.eval()
+#     groupembedder.eval()
 #     embedder.eval()
 #     scorer.eval()
 
 #     with torch.no_grad():
-#         total_pred, total_label, test_loss, test_ce_loss, test_recon_loss, initembedder, embedder, scorer = run_test_epoch(args, data, testdataloader, initembedder, embedder, scorer, loss_fn)
+#         total_pred, total_label, test_loss, test_ce_loss, test_recon_loss, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer = run_test_epoch(args, data, testdataloader, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, loss_fn)
 #     # Calculate Accuracy & Epoch Loss
 #     total_label = torch.cat(total_label, dim=0)
 #     total_pred = torch.cat(total_pred)
