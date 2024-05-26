@@ -47,7 +47,8 @@ def run_epoch(args, data, dataloader, initembedder, embedder, scorer, optim, sch
     # Batch ==============================================================
     ts = time.time()
     batchcount = 0
-    for input_nodes, output_nodes, blocks in dataloader:      
+    pbar = tqdm(enumerate(dataloader), total=len(dataloader))
+    for step, (input_nodes, output_nodes, blocks) in pbar:      
         # Wrap up loader
         blocks = [b.to(device) for b in blocks]
         srcs, dsts = blocks[-1].edges(etype='in')
@@ -80,10 +81,20 @@ def run_epoch(args, data, dataloader, initembedder, embedder, scorer, optim, sch
                 
         # Predict Class
         if args.scorer == "sm":
+          if args.dataset_name == 'task1':
+            hembedding = e[hedgeindices]
+            input_embeddings = hembedding
+            predictions = scorer(input_embeddings)
+
+          elif args.dataset_name == 'task2':
             hembedding = e[hedgeindices]
             vembedding = v[nodeindices]
             input_embeddings = torch.cat([hembedding,vembedding], dim=1)
             predictions = scorer(input_embeddings)
+
+          else:
+            raise ValueError("Not supported data type")
+              
         elif args.scorer == "im":
             predictions, nodelabels = scorer(blocks[-1], v, e)
         total_pred.append(predictions.detach())
@@ -103,6 +114,10 @@ def run_epoch(args, data, dataloader, initembedder, embedder, scorer, optim, sch
         total_recon_loss += (recon_loss.item() * input_nodes['node'].shape[0]) # this is fixed as zero
         if opt == "train":
             torch.cuda.empty_cache()
+        
+        lr = optim.param_groups[0]['lr']
+        description = f'Step: {step+1}/{len(dataloader)} || Lr: {round(lr, 9)} || Loss: {round(loss.item(), 4)}'
+        pbar.set_description(description)
     
     print("Time : ", time.time() - ts)
     
@@ -156,10 +171,18 @@ def run_test_epoch(args, data, testdataloader, initembedder, embedder, scorer, l
                 
         # Predict Class
         if args.scorer == "sm":
+          if args.dataset_name == "task1":
+            hembedding = e[hedgeindices_in_batch]
+            input_embeddings = hembedding
+            predictions = scorer(input_embeddings)
+          elif args.dataset_name == "task2":
             hembedding = e[hedgeindices_in_batch]
             vembedding = v[nodeindices_in_batch]
             input_embeddings = torch.cat([hembedding,vembedding], dim=1)
             predictions = scorer(input_embeddings)
+          else:
+            raise ValueError("Not supported dataset type")
+          
         elif args.scorer == "im":
             predictions, nodelabels = scorer(blocks[-1], v, e)
         total_pred.append(predictions.detach())
@@ -285,10 +308,10 @@ if args.use_gpu:
     if args.evaltype == "test":
         test_data = test_data.to(device)
     data.e_feat = data.e_feat.to(device)
-dataloader = dgl.dataloading.NodeDataLoader( g, {"edge": train_data}, sampler, batch_size=args.bs, shuffle=True, drop_last=False) # , num_workers=4
-validdataloader = dgl.dataloading.NodeDataLoader( g, {"edge": valid_data}, sampler, batch_size=args.bs, shuffle=True, drop_last=False)
+dataloader = dgl.dataloading.DataLoader( g, {"edge": train_data}, sampler, batch_size=args.bs, shuffle=True, drop_last=False) # , num_workers=4
+validdataloader = dgl.dataloading.DataLoader( g, {"edge": valid_data}, sampler, batch_size=args.bs, shuffle=True, drop_last=False)
 if args.evaltype == "test":
-    testdataloader = dgl.dataloading.NodeDataLoader(g, {"edge": test_data}, fullsampler, batch_size=args.bs, shuffle=False, drop_last=False)
+    testdataloader = dgl.dataloading.DataLoader(g, {"edge": test_data}, fullsampler, batch_size=args.bs, shuffle=False, drop_last=False)
 
 args.input_vdim = data.v_feat.size(1)
 args.input_edim = data.e_feat.size(1)
@@ -320,7 +343,7 @@ if os.path.isfile(savefname) is False:
     # print(walks)
     print("Start Word2vec")
     print("num cpu cores", multiprocessing.cpu_count())
-    w2v = Word2Vec( walks, vector_size=args.input_vdim, window=10, min_count=0, sg=1, epochs=1, workers=multiprocessing.cpu_count())
+    w2v = Word2Vec(walks, vector_size=args.input_vdim, window=10, min_count=0, sg=1, epochs=1, workers=multiprocessing.cpu_count())
     print(w2v.wv['0'])
     wv = w2v.wv
     A = [wv[str(i)] for i in range(data.numnodes)]
@@ -331,7 +354,8 @@ else:
 A = StandardScaler().fit_transform(A)
 A = A.astype('float32')
 A = torch.tensor(A).to(device)
-initembedder = Wrap_Embedding(data.numnodes, args.input_vdim, scale_grad_by_freq=False, padding_idx=0, sparse=False)
+# Make embedding vector with input 
+initembedder = Wrap_Embedding(data.numnodes, args.input_vdim, scale_grad_by_freq=False, padding_idx=0, sparse=False).to(device)
 initembedder.weight = nn.Parameter(A)
 
 
@@ -367,7 +391,13 @@ print("Embedder to Device")
 print("Scorer = ", args.scorer)
 # pick scorer
 if args.scorer == "sm":
-    scorer = FC(args.dim_vertex + args.dim_edge, args.dim_edge, args.output_dim, args.scorer_num_layers, args.dropout).to(device)
+    if args.dataset_name == 'task1':
+      scorer = FC(args.dim_edge, args.dim_edge, args.output_dim, args.scorer_num_layers, args.dropout).to(device)
+    elif args.dataset_name == 'task2':
+      scorer = FC(args.dim_vertex + args.dim_edge, args.dim_edge, args.output_dim, args.scorer_num_layers, args.dropout).to(device)
+    else:
+      raise ValueError("Not supported dataset type")
+        
 elif args.scorer == "im": #whatsnet
     scorer = WhatsnetIM(args.dim_vertex, args.output_dim, dim_hidden=args.dim_hidden, num_layer=args.scorer_num_layers).to(device)
 
@@ -486,41 +516,41 @@ for epoch in tqdm(range(epoch_start, args.epochs + 1), desc='Epoch'): # tqdm
             'patience' : patience
             }, outputdir + "checkpoint.pt")
 
-if args.evaltype == "test":
-    print("Test")
+# if args.evaltype == "test":
+#     print("Test")
     
-    initembedder.load_state_dict(torch.load(outputdir + "initembedder.pt")) # , map_location=device
-    embedder.load_state_dict(torch.load(outputdir + "embedder.pt")) # , map_location=device
-    scorer.load_state_dict(torch.load(outputdir + "scorer.pt")) # , map_location=device
+#     initembedder.load_state_dict(torch.load(outputdir + "initembedder.pt")) # , map_location=device
+#     embedder.load_state_dict(torch.load(outputdir + "embedder.pt")) # , map_location=device
+#     scorer.load_state_dict(torch.load(outputdir + "scorer.pt")) # , map_location=device
     
-    initembedder.eval()
-    embedder.eval()
-    scorer.eval()
+#     initembedder.eval()
+#     embedder.eval()
+#     scorer.eval()
 
-    with torch.no_grad():
-        total_pred, total_label, test_loss, test_ce_loss, test_recon_loss, initembedder, embedder, scorer = run_test_epoch(args, data, testdataloader, initembedder, embedder, scorer, loss_fn)
-    # Calculate Accuracy & Epoch Loss
-    total_label = torch.cat(total_label, dim=0)
-    total_pred = torch.cat(total_pred)
-    pred_cls = torch.argmax(total_pred, dim=1)
-    eval_acc = torch.eq(pred_cls, total_label).sum().item() / len(total_label)
-    y_test = total_label.cpu().numpy()
-    pred = pred_cls.cpu().numpy()
-    confusion, accuracy, precision, recall, f1 = utils.get_clf_eval(y_test, pred, avg='micro', outputdim=args.output_dim)
-    with open(outputdir + "log_test_micro.txt", "+a") as f:
-        f.write("{} epoch:Test Loss:{} ({}, {})/Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(epoch, test_loss, test_ce_loss, test_recon_loss, accuracy,precision,recall,f1))
-    confusion, accuracy, precision, recall, f1 = utils.get_clf_eval(y_test, pred, avg='macro', outputdim=args.output_dim)
-    with open(outputdir + "log_test_confusion.txt", "+a") as f:
-        for r in range(args.output_dim):
-            for c in range(args.output_dim):
-                f.write(str(confusion[r][c]))
-                if c == args.output_dim -1 :
-                    f.write("\n")
-                else:
-                    f.write("\t")
-    with open(outputdir + "log_test_macro.txt", "+a") as f:               
-        f.write("{} epoch:Test Loss:{} ({}, {})/Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(epoch, test_loss, test_ce_loss, test_recon_loss, accuracy,precision,recall,f1))
+#     with torch.no_grad():
+#         total_pred, total_label, test_loss, test_ce_loss, test_recon_loss, initembedder, embedder, scorer = run_test_epoch(args, data, testdataloader, initembedder, embedder, scorer, loss_fn)
+#     # Calculate Accuracy & Epoch Loss
+#     total_label = torch.cat(total_label, dim=0)
+#     total_pred = torch.cat(total_pred)
+#     pred_cls = torch.argmax(total_pred, dim=1)
+#     eval_acc = torch.eq(pred_cls, total_label).sum().item() / len(total_label)
+#     y_test = total_label.cpu().numpy()
+#     pred = pred_cls.cpu().numpy()
+#     confusion, accuracy, precision, recall, f1 = utils.get_clf_eval(y_test, pred, avg='micro', outputdim=args.output_dim)
+#     with open(outputdir + "log_test_micro.txt", "+a") as f:
+#         f.write("{} epoch:Test Loss:{} ({}, {})/Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(epoch, test_loss, test_ce_loss, test_recon_loss, accuracy,precision,recall,f1))
+#     confusion, accuracy, precision, recall, f1 = utils.get_clf_eval(y_test, pred, avg='macro', outputdim=args.output_dim)
+#     with open(outputdir + "log_test_confusion.txt", "+a") as f:
+#         for r in range(args.output_dim):
+#             for c in range(args.output_dim):
+#                 f.write(str(confusion[r][c]))
+#                 if c == args.output_dim -1 :
+#                     f.write("\n")
+#                 else:
+#                     f.write("\t")
+#     with open(outputdir + "log_test_macro.txt", "+a") as f:               
+#         f.write("{} epoch:Test Loss:{} ({}, {})/Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(epoch, test_loss, test_ce_loss, test_recon_loss, accuracy,precision,recall,f1))
 
-if os.path.isfile(outputdir + "checkpoint.pt"):
-    os.remove(outputdir + "checkpoint.pt")
+# if os.path.isfile(outputdir + "checkpoint.pt"):
+#     os.remove(outputdir + "checkpoint.pt")
 

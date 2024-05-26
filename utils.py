@@ -30,7 +30,7 @@ def parse_args():
     parser.add_argument('--gamma', default=0.99, type=float)
     parser.add_argument('--patience', default=5, type=int)
     parser.add_argument('--dropout', default=0.5, type=float)
-    parser.add_argument('--test_epoch', default=10, type=int)
+    parser.add_argument('--test_epoch', default=1, type=int)
     parser.add_argument('--save_epochs', default=-1, type=int)
     parser.add_argument('--rw', type=float, default=0.01, help='The weight of reconstruction loss. But not used')
 
