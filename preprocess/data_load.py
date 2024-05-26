@@ -355,8 +355,11 @@ class Hypergraph:
                                 assert _pe >= 0
                 self.weight_flag = True
 
-    def get_data(self, type=0):
-        hedgelist = ((self.hedge2type == type).nonzero(as_tuple=True)[0])
+    def get_data(self, type=0, task2=False):
+        if task2:
+          hedgelist = ((self.hedge2type >= type).nonzero(as_tuple=True)[0])
+        else:  
+          hedgelist = ((self.hedge2type == type).nonzero(as_tuple=True)[0])
         if self.use_gpu is False:
             hedgelist = hedgelist.tolist()
         return hedgelist

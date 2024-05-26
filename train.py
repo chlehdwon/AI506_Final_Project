@@ -56,10 +56,6 @@ def run_epoch(args, data, dataloader, initembedder, embedder, scorer, optim, sch
         hedgeindices = dsts.to(device)
         nodelabels = blocks[-1].edges[('node','in','edge')].data['label'].long().to(device)
 
-        print(nodeindices)
-        print(hedgeindices)
-        print(nodelabels)
-
         batchcount += 1
         # Get Embedding
         if args.embedder == "whatsnetLSPE":
@@ -104,11 +100,29 @@ def run_epoch(args, data, dataloader, initembedder, embedder, scorer, optim, sch
             predictions = scorer(input_embeddings)
 
           elif args.dataset_name == 'task2':
-            hembedding = e[hedgeindices]
-            vembedding = v[nodeindices]
-            input_embeddings = torch.cat([hembedding,vembedding], dim=1)
-            predictions = scorer(input_embeddings)
+            if opt == 'train':
+              trainable_indices = torch.nonzero((nodelabels == 0) | (nodelabels == 1)).squeeze()
+              hedgeindices = hedgeindices[trainable_indices]
+              nodeindices = nodeindices[trainable_indices]
+              nodelabels = nodelabels[trainable_indices]
 
+              hembedding = e[hedgeindices]
+              vembedding = v[nodeindices]
+              input_embeddings = torch.cat([hembedding,vembedding], dim=1)
+              predictions = scorer(input_embeddings)
+            elif opt == 'valid':
+              valid_indices = torch.nonzero((nodelabels == 2) | (nodelabels == 3)).squeeze()
+              hedgeindices = hedgeindices[valid_indices]
+              nodeindices = nodeindices[valid_indices]
+              nodelabels = nodelabels[valid_indices]
+              nodelabels = nodelabels - 2
+
+
+              hembedding = e[hedgeindices]
+              vembedding = v[nodeindices]
+              input_embeddings = torch.cat([hembedding,vembedding], dim=1)
+              predictions = scorer(input_embeddings)
+              
           else:
             raise ValueError("Not supported data type")
               
@@ -304,10 +318,15 @@ else:
             
 # Data -----------------------------------------------------------------------------
 data = dl.Hypergraph(args, dataset_name)
-train_data = data.get_data(0)
-valid_data = data.get_data(1)
+if args.dataset_name == 'task1':
+  train_data = data.get_data(0)
+  valid_data = data.get_data(1)
+elif args.dataset_name == 'task2':
+  train_data = data.get_data(0, task2=True)
+  valid_data = data.get_data(1, task2=True)
 if args.evaltype == "test":
     test_data = data.get_data(2)
+
 ls = [{('node', 'in', 'edge'): -1, ('edge', 'con', 'node'): args.sampling}] * (args.num_layers * 2 + 1)
 full_ls = [{('node', 'in', 'edge'): -1, ('edge', 'con', 'node'): -1}] * (args.num_layers * 2 + 1)
 if data.weight_flag:
@@ -427,10 +446,8 @@ elif args.optimizer == "adamw":
 elif args.optimizer == "rms":
     optime = torch.optim.RMSprop(list(initembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr)
 scheduler = torch.optim.lr_scheduler.ExponentialLR(optim, gamma=args.gamma)
-if args.dataset_name == 'task1':
-  loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
-else:
-  loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
+
+loss_fn = nn.CrossEntropyLoss()
 
 # Train =================================================================================================================================================================================
 train_acc=0
