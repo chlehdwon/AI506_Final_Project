@@ -55,7 +55,11 @@ def run_epoch(args, data, dataloader, initembedder, embedder, scorer, optim, sch
         nodeindices = srcs.to(device)
         hedgeindices = dsts.to(device)
         nodelabels = blocks[-1].edges[('node','in','edge')].data['label'].long().to(device)
-        
+
+        print(nodeindices)
+        print(hedgeindices)
+        print(nodelabels)
+
         batchcount += 1
         # Get Embedding
         if args.embedder == "whatsnetLSPE":
@@ -82,7 +86,20 @@ def run_epoch(args, data, dataloader, initembedder, embedder, scorer, optim, sch
         # Predict Class
         if args.scorer == "sm":
           if args.dataset_name == 'task1':
-            hembedding = e[hedgeindices]
+            unique_hedgeindices = torch.unique(hedgeindices)
+            label_indices = []
+            for i in range(len(hedgeindices)):
+                if i == 0:
+                  label_indices.append(i)
+                  prev_value = hedgeindices[i]
+                else:
+                  if hedgeindices[i] != prev_value:
+                      label_indices.append(i)
+                      prev_value = hedgeindices[i]
+
+            label_indices = torch.Tensor(label_indices).long()
+            nodelabels = nodelabels[label_indices]   
+            hembedding = e[unique_hedgeindices]
             input_embeddings = hembedding
             predictions = scorer(input_embeddings)
 
@@ -114,12 +131,14 @@ def run_epoch(args, data, dataloader, initembedder, embedder, scorer, optim, sch
         total_recon_loss += (recon_loss.item() * input_nodes['node'].shape[0]) # this is fixed as zero
         if opt == "train":
             torch.cuda.empty_cache()
+
         
         lr = optim.param_groups[0]['lr']
         description = f'Step: {step+1}/{len(dataloader)} || Lr: {round(lr, 9)} || Loss: {round(loss.item(), 4)}'
         pbar.set_description(description)
     
     print("Time : ", time.time() - ts)
+    print(num_data)
     
     return total_pred, total_label, total_loss / num_data, total_ce_loss / num_data, total_recon_loss / num_recon_data, initembedder, embedder, scorer, optim, scheduler
 
@@ -408,7 +427,10 @@ elif args.optimizer == "adamw":
 elif args.optimizer == "rms":
     optime = torch.optim.RMSprop(list(initembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr)
 scheduler = torch.optim.lr_scheduler.ExponentialLR(optim, gamma=args.gamma)
-loss_fn = nn.CrossEntropyLoss()
+if args.dataset_name == 'task1':
+  loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
+else:
+  loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
 
 # Train =================================================================================================================================================================================
 train_acc=0
@@ -446,7 +468,7 @@ for epoch in tqdm(range(epoch_start, args.epochs + 1), desc='Epoch'): # tqdm
     embedder.train()
     scorer.train()
     
-    # Calculate Accuracy & Epoch Loss
+    # # Calculate Accuracy & Epoch Loss
     total_pred, total_label, train_loss, train_ce_loss, train_recon_loss, initembedder, embedder, scorer, optim, scheduler = run_epoch(args, data, dataloader, initembedder, embedder, scorer, optim, scheduler, loss_fn, opt="train")
     total_pred = torch.cat(total_pred)
     total_label = torch.cat(total_label, dim=0)
