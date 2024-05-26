@@ -10,7 +10,7 @@ import pickle
 
 # Based on SetTransformer https://github.com/juho-lee/set_transformer
 
-class MAB(nn.Module):
+class MAB(nn.Module): # Multi-head Attention
     def __init__(self, dim_Q, dim_K, dim_V, num_heads, ln=False, numlayers=1, RE="None"):
         super(MAB, self).__init__()
         self.dim_V = dim_V
@@ -68,7 +68,7 @@ class MAB(nn.Module):
         O = O if getattr(self, 'ln1', None) is None else self.ln1(O)
         return O
 
-class SAB(nn.Module):
+class SAB(nn.Module): # Multi-head Self attention
     # use for ablation study of positional encodings
     def __init__(self, dim_in, dim_out, num_heads, ln=False, RE="None"):
         super(SAB, self).__init__()
@@ -77,7 +77,7 @@ class SAB(nn.Module):
         out = self.mab(X, X, Xpos)
         return out
 
-class ISAB(nn.Module):
+class ISAB(nn.Module): # Inducing self-attention mechanism
     def __init__(self, dim_in, dim_out, num_heads, num_inds, ln=False):
         super(ISAB, self).__init__()
         # X is dim_in, I is (num_inds) * (dim_out)
@@ -160,14 +160,14 @@ class WhatsnetLayer(nn.Module):
         #     Attention part: create edge-dependent embedding
         dimension = input_vdim
         self.enc_v = nn.ModuleList()
-        for _ in range(self.num_att_layer):
+        for _ in range(self.num_att_layer): # ISAB x num_att_layer
             if self.att_type_v in ["ITRE", "ShawRE"]:
                 self.enc_v.append(SAB(dimension, dim_hidden, num_heads, ln=ln, RE=self.att_type_v))
                 dimension = dim_hidden
-            elif self.att_type_v != "NoAtt":
+            elif self.att_type_v != "NoAtt": # Executing
                 if self.pe_ablation_flag:
                     self.enc_v.append(SAB(dimension, dim_hidden, num_heads, ln=ln))
-                else:
+                else: # False, executing
                     self.enc_v.append(ISAB(dimension, dim_hidden, num_heads, num_inds, ln=ln))
                 dimension = dim_hidden
         #     Aggregate part
@@ -401,7 +401,5 @@ class Whatsnet(nn.Module):
             vfeat, efeat = self.layers[l](blocks[2*l], blocks[2*l+1], vfeat, efeat, vindex)
             
         return vfeat, efeat
-    
-    
     
     
