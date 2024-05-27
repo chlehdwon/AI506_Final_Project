@@ -21,8 +21,10 @@ class FC(nn.Module):
             for i in range(self.num_layers):
                 if i == 0:
                     self.predict_layer.append(nn.Linear(self.input_dim, self.hidden_dim))
-                else:
+                elif i == self.num_layers-1:
                     self.predict_layer.append(nn.Linear(self.hidden_dim, self.output_dim))
+                else:
+                    self.predict_layer.append(nn.Linear(self.hidden_dim, self.hidden_dim))
         
     def forward(self, x):
         for i, layer in enumerate(self.predict_layer):
