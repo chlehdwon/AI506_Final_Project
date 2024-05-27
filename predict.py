@@ -45,6 +45,7 @@ print("OutputDir = " + outputdir)
 # Initialization --------------------------------------------------------------------
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 dataset_name = args.dataset_name #'citeseer' 'cora'
+print(f'Device: {device}, Dataset name: {dataset_name}')
 
 if args.fix_seed:
     random.seed(args.seed)
@@ -62,22 +63,38 @@ plot_epoch = args.epochs
 
 # Data -----------------------------------------------------------------------------
 data = dl.Hypergraph(args, dataset_name)
-allhedges = torch.LongTensor(np.arange(data.numhedges))
+if args.dataset_name == 'task1':
+  valid_data = data.get_data(1)
+  test_data = data.get_data(2)
+elif args.dataset_name == 'task2':
+  valid_data = data.get_data(1, task2=True)
+  test_data = data.get_data(2, task2=True)
+
+#allhedges = torch.LongTensor(np.arange(data.numhedges))
+ls = [{('node', 'in', 'edge'): -1, ('edge', 'con', 'node'): args.sampling}] * (args.num_layers * 2 + 1)
 full_ls = [{('node', 'in', 'edge'): -1, ('edge', 'con', 'node'): -1}] * (args.num_layers * 2 + 1)
 if data.weight_flag:
     g = gen_weighted_DGLGraph(args, data.hedge2node, data.hedge2nodePE, data.hedge2nodepos, data.node2hedge, data.node2hedgePE, device)
 else:
     g = gen_DGLGraph(args, data.hedge2node, data.hedge2nodepos, data.node2hedge, device)
 try:
+    sampler = dgl.dataloading.NeighborSampler(ls)
     fullsampler = dgl.dataloading.NeighborSampler(full_ls)
 except:
+    sampler = dgl.dataloading.MultiLayerNeighborSampler(ls, False)
     fullsampler = dgl.dataloading.MultiLayerNeighborSampler(full_ls)
 if args.use_gpu:
     g = g.to(device)
-    hedge_data = allhedges.to(device)
-else:
-    hedge_data = allhedges
-dataloader = dgl.dataloading.NodeDataLoader( g, {"edge": hedge_data}, fullsampler, batch_size=args.bs, shuffle=False, drop_last=False) # , num_workers=4
+    valid_data = valid_data.to(device)
+    test_data = test_data.to(device)
+    data.e_feat = data.e_feat.to(device)
+    #hedge_data = allhedges.to(device)
+#else:
+    #hedge_data = allhedges
+#dataloader = dgl.dataloading.NodeDataLoader( g, {"edge": hedge_data}, fullsampler, batch_size=args.bs, shuffle=False, drop_last=False) # , num_workers=4
+validdataloader = dgl.dataloading.DataLoader(g, {"edge": valid_data}, sampler, batch_size=args.bs, shuffle=True, drop_last=False)
+testdataloader = dgl.dataloading.DataLoader(g, {"edge": test_data}, fullsampler, batch_size=args.bs, shuffle=False, drop_last=False)
+
 
 # init embedder
 args.input_vdim = 48
