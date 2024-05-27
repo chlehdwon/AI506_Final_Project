@@ -247,7 +247,7 @@ if args.evaltype == "test":
     assert args.fix_seed
     outputdir = "results_test/" + args.dataset_name + "_" + str(args.k) + "/" + initialization + "/"
     outputParamResFname = outputdir + args.model_name + "/param_result.txt"
-    outputdir += args.model_name + "/" + args.param_name +"/" + str(args.seed) + "/"
+    outputdir += args.model_name + "/" + args.param_name +"/" + str(args.seed) + "/" + "custom_embedding/"
     if args.recalculate is False and os.path.isfile(outputdir + "log_test_confusion.txt"):
         sys.exit("Already Run")
 else:
@@ -408,18 +408,19 @@ A = StandardScaler().fit_transform(A)
 A = A.astype('float32')
 A = torch.tensor(A).to(device)
 # Make embedding vector with input 
-initembedder = Wrap_Embedding(data.numnodes, args.input_vdim, scale_grad_by_freq=False, padding_idx=0, sparse=False).to(device)
+print(data.numnodes, data.numcustomers, data.numcolors, data.numsizes, data.numgroups)
+initembedder = Wrap_Embedding(data.numnodes, args.input_vdim, scale_grad_by_freq=False, sparse=False).to(device)
 initembedder.weight = nn.Parameter(A)
 
 # Make embedding with feature
 # 0-342037
-customerembedder = Wrap_Embedding(data.numcustomers, 24, scale_grad_by_freq=False, padding_idx=0, sparse=False).to(device)
+customerembedder = Wrap_Embedding(data.numcustomers, 24, scale_grad_by_freq=False, sparse=False).to(device)
 # 0-641
-colorembedder = Wrap_Embedding(data.numcolors, 8, scale_grad_by_freq=False, padding_idx=0, sparse=False).to(device)
+colorembedder = Wrap_Embedding(data.numcolors, 8, scale_grad_by_freq=False, sparse=False).to(device)
 # 0-28
-sizeembedder = Wrap_Embedding(data.numsizes, 8, scale_grad_by_freq=False, padding_idx=0, sparse=False).to(device)
+sizeembedder = Wrap_Embedding(data.numsizes, 8, scale_grad_by_freq=False, sparse=False).to(device)
 # 0-31
-groupembedder = Wrap_Embedding(data.numgroups, 8, scale_grad_by_freq=False, padding_idx=0, sparse=False).to(device)
+groupembedder = Wrap_Embedding(data.numgroups, 8, scale_grad_by_freq=False, sparse=False).to(device)
 # Add dimension for embeddings
 args.input_vdim = args.input_vdim + 24
 args.input_edim = args.input_edim + 24
@@ -471,7 +472,7 @@ if args.optimizer == "adam":
 elif args.optimizer == "adamw":
     optim = torch.optim.AdamW(list(initembedder.parameters())+list(customerembedder.parameters())+list(colorembedder.parameters())+list(sizeembedder.parameters())+list(groupembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr)
 elif args.optimizer == "rms":
-    optime = torch.optim.RMSprop(list(initembedder.parameters())+list(customerembedder.parameters())+list(colorembedder.parameters())+list(sizeembedder.parameters())+list(groupembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr)
+    optim = torch.optim.RMSprop(list(initembedder.parameters())+list(customerembedder.parameters())+list(colorembedder.parameters())+list(sizeembedder.parameters())+list(groupembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr)
 scheduler = torch.optim.lr_scheduler.ExponentialLR(optim, gamma=args.gamma)
 
 loss_fn = nn.CrossEntropyLoss()
@@ -513,8 +514,8 @@ if os.path.isfile(outputdir + "checkpoint.pt") and args.recalculate is False:
         torch.save(colorembedder.state_dict(),colorembeddersavename)
         sizeembeddersavename = outputdir + "sizeembedder.pt"
         torch.save(sizeembedder.state_dict(),sizeembeddersavename)
-        groupembedder = outputdir + "groupembedder.pt"
-        torch.save(groupembedder.state_dict(),groupembedder)
+        groupembeddersavename = outputdir + "groupembedder.pt"
+        torch.save(groupembedder.state_dict(),groupembeddersavename)
     
 for epoch in tqdm(range(epoch_start, args.epochs + 1), desc='Epoch'): # tqdm
     print("Training")
@@ -590,8 +591,8 @@ for epoch in tqdm(range(epoch_start, args.epochs + 1), desc='Epoch'): # tqdm
                 torch.save(colorembedder.state_dict(),colorembeddersavename)
                 sizeembeddersavename = outputdir + "sizeembedder.pt"
                 torch.save(sizeembedder.state_dict(),sizeembeddersavename)
-                groupembedder = outputdir + "groupembedder.pt"
-                torch.save(groupembedder.state_dict(),groupembedder)
+                groupembeddersavename = outputdir + "groupembedder.pt"
+                torch.save(groupembedder.state_dict(),groupembeddersavename)
         else:
             patience += 1
 
