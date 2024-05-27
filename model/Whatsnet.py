@@ -402,4 +402,3 @@ class Whatsnet(nn.Module):
             
         return vfeat, efeat
     
-    

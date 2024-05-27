@@ -35,6 +35,9 @@ from model.WhatsnetHAT import WhatsnetHAT, WhatsnetHATLayer
 from model.WhatsnetHNHN import WhatsnetHNHN, WhatsnetHNHNLayer
 from model.layer import FC, Wrap_Embedding
 
+import wandb
+
+
 def run_epoch(args, data, dataloader, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, optim, scheduler, loss_fn, opt="train"):
     total_pred = []
     total_label = []
@@ -517,6 +520,14 @@ if os.path.isfile(outputdir + "checkpoint.pt") and args.recalculate is False:
         groupembeddersavename = outputdir + "groupembedder.pt"
         torch.save(groupembedder.state_dict(),groupembeddersavename)
     
+# Wandb setting
+if args.use_wandb:
+    wandb.init(
+        # set the wandb project where this run will be logged
+        project="WhatsNet",
+        name=args.run_name,
+    )
+
 for epoch in tqdm(range(epoch_start, args.epochs + 1), desc='Epoch'): # tqdm
     print("Training")
     
@@ -536,6 +547,8 @@ for epoch in tqdm(range(epoch_start, args.epochs + 1), desc='Epoch'): # tqdm
     train_acc = torch.eq(pred_cls, total_label).sum().item() / len(total_label)
     scheduler.step()
     print("%d epoch: Training loss : %.4f (%.4f, %.4f) / Training acc : %.4f\n" % (epoch, train_loss, train_ce_loss, train_recon_loss, train_acc))
+    if args.use_wandb:
+        wandb.log({'train_loss': train_loss, 'train_ce_loss': train_ce_loss, 'train_recon_loss': train_recon_loss, 'train_acc': train_acc})
     with open(outputdir + "log_train.txt", "+a") as f:
         f.write("%d epoch: Training loss : %.4f (%.4f, %.4f) / Training acc : %.4f\n" % (epoch, train_loss, train_ce_loss, train_recon_loss, train_acc))
         
@@ -559,8 +572,10 @@ for epoch in tqdm(range(epoch_start, args.epochs + 1), desc='Epoch'): # tqdm
         y_test = total_label.cpu().numpy()
         pred = pred_cls.cpu().numpy()
         confusion, accuracy, precision, recall, f1 = utils.get_clf_eval(y_test, pred, avg='micro', outputdim=args.output_dim)
+        if args.use_wandb:
+            wandb.log({'eval_loss': eval_loss, 'eval_ce_loss': eval_ce_loss, 'eval_recon_loss': eval_recon_loss, 'eval_accuracy': accuracy})
         with open(outputdir + "log_valid_micro.txt", "+a") as f:
-            f.write("{} epoch:Test Loss:{} ({}, {})/Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(epoch, eval_loss, eval_ce_loss, eval_recon_loss, accuracy,precision,recall,f1))
+            f.write("{} epoch:Test Loss:{} ({}, {})/Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(epoch, eval_loss, eval_ce_loss, eval_recon_loss, accuracy, precision, recall, f1))
         confusion, accuracy, precision, recall, f1 = utils.get_clf_eval(y_test, pred, avg='macro', outputdim=args.output_dim)
         with open(outputdir + "log_valid_confusion.txt", "+a") as f:
             for r in range(args.output_dim):
@@ -574,7 +589,7 @@ for epoch in tqdm(range(epoch_start, args.epochs + 1), desc='Epoch'): # tqdm
             f.write("{} epoch:Test Loss:{} ({}, {})/Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(epoch, eval_loss, eval_ce_loss, eval_recon_loss, accuracy,precision,recall,f1))
 
         if best_eval_acc < eval_acc:
-            print(best_eval_acc)
+            print(f'{best_eval_acc} -> {eval_acc}')
             best_eval_acc = eval_acc
             patience = 0
             if args.evaltype == "test" or args.save_epochs > 0:
