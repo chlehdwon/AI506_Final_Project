@@ -61,6 +61,14 @@ class Hypergraph:
         self.numhedges = 0
         self.numnodes = 0
         
+        self.hedge2customer = []
+        self.node2color = []
+        self.node2size = []
+        self.node2group = []
+        self.numcustomers = 0
+        self.numcolors = 0
+        self.numsizes = 0
+        self.numgroups = 0
         
         self.hedgeindex = {} # papaercode -> index
         self.hedgename = {} # index -> papercode
@@ -88,15 +96,6 @@ class Hypergraph:
                     tmp = line.split("\t")
                     hidx = self.numhedges
                     self.numhedges += 1
-                    if self.exist_hedgename:
-                        papercode = tmp[0][1:-1] # without '
-                        papercode = papercode.rstrip()
-                        self.hedgeindex[papercode] = hidx
-                        self.hedgename[hidx] = papercode
-                        tmp = tmp[1:]
-                    else:
-                        self.hedgeindex[_hidx] = hidx
-                        self.hedgename[hidx] = _hidx
                     self.hedgeindex[_hidx] = hidx
                     self.hedgename[hidx] = _hidx
                     self.hedge2node.append([])
@@ -190,35 +189,6 @@ class Hypergraph:
                     positions = [int(i) for i in tmp]
                 for nodepos in positions:
                     self.hedge2nodepos[hidx].append(nodepos)
-        # labeled by binning
-        if args.binning > 0:
-            weights = sorted([w for h in self.get_data(type=0) for w in self._hedge2nodepos[h]])
-            total_num = len(weights)
-            cum = 0
-            self.binindex = []
-            for w in weights:
-                cum += 1
-                if (cum / total_num) >=  ((1.0 / args.binning) * (len(self.binindex) + 1)):
-                    self.binindex.append(w)
-            print("BinIndex", self.binindex)
-            with open(self.inputdir + self.dataname + "/binindex.txt", "w") as f:
-                for binvalue in self.binindex:
-                    f.write(str(binvalue) + "\n")
-            # float -> int
-            for h in range(self.numhedges):
-                for i, w in enumerate(self._hedge2nodepos[h]):
-                    for bi, bv in enumerate(self.binindex):
-                        if w <= bv:
-                            self.hedge2nodepos[h][i] = bi
-                            break
-                        elif bi == (args.output_dim - 1) and w > bv:
-                            self.hedge2nodepos[h][i] = bi
-                            break
-            # check
-            for h in range(self.numhedges):
-                for w in self.hedge2nodepos[h]:
-                    assert w in range(args.binning), str(w)
-        
         # extract PE ----------------------------------------------------------------------------------------------------
         # hedge2nodePE
         if len(args.vorder_input) > 0: # centrality -> PE ------------------------------------------------------------------
@@ -276,84 +246,34 @@ class Hypergraph:
                 for horder in self.node2hedgePE[vidx]:
                     assert len(horder) == len(args.vorder_input)
             self.weight_flag = True
-        elif len(args.pe) > 0: # ---------------------------------------------------------------------------------------------
-            # Use other positional encoding!
-            rows, cols = [], [] # construct adjacency matrix
-            for v in range(self.numnodes):
-                hedges = self.node2hedge[v]
-                check = np.zeros(self.numnodes)
-                for h in hedges:
-                    neighbors = self.hedge2node[h]
-                    for nv in neighbors:
-                        if v < nv and check[nv] == 0:
-                            check[nv] = 1
-                            rows.append(v)
-                            cols.append(nv)
-                            rows.append(nv)
-                            cols.append(v)
-            A = sp.coo_matrix((np.ones(len(rows)), (np.array(rows), np.array(cols))), shape=(self.numnodes, self.numnodes))
-            _deg = A.sum(axis=1).squeeze(1)
-            deg = list(_deg.flat)
-            deg = np.array(deg)
-            print("Adj is prepared")
-            if args.pe in ["DK", "PRWK"]:
-                # sorting hedge2node, hedge2nodepos
-                for hidx in range(self.numhedges):
-                    sorted_idx = np.argsort(np.array(self.hedge2node[hidx]))
-                    self.hedge2node[hidx] = np.array(self.hedge2node[hidx])[sorted_idx].tolist()
-                    self.hedge2nodepos[hidx] = np.array(self.hedge2nodepos[hidx])[sorted_idx].tolist()
-                if args.pe == "DK":
-                    L = sp.diags(deg, dtype=float) - A # No Normalize
-                    beta = 1.0
-                    L = -beta * L
-                    v2v = L 
-                    for hidx in trange(self.numhedges, desc="making KD per hedge"):
-                        hedge = self.hedge2node[hidx]
-                        _v2v_e = []
-                        for vidx in range(len(hedge)):
-                            vi = hedge[vidx]
-                            _row = v2v.getrow(vi).toarray()[0]
-                            efeat = []
-                            for nvidx in range(len(hedge)):
-                                nv = hedge[nvidx]
-                                if (_row[nv] < 0 and vidx != nvidx):
-                                    assert vi == nv
-                                    efeat.append(1.0)
-                                else:
-                                    efeat.append(_row[nv])
-                            _v2v_e.append(efeat)
-                        _v2v_e = np.array(_v2v_e)
-                        v2v_e = expm(_v2v_e)
-                        for vorder in range(len(hedge)):
-                            self.hedge2nodePE[hidx][vorder] = v2v_e[vidx].tolist()
-                            for _pe in self.hedge2nodePE[hidx][vorder]:
-                                if _pe < 0:
-                                    print(_v2v_e[vidx])
-                                    print(v2v_e[vidx])
-                                    print(self.hedge2nodePE[hidx][vorder])
-                                assert _pe >= 0
-                    
-                elif args.pe == "PRWK":
-                    L = sp.diags(deg, dtype=float) - A # No Normalize
-                    print("L is prepared")
-                    gamma, p = 0.5, 2
-                    r = sp.eye(self.numnodes) - gamma * L
-                    print("R is prepared")
-                    v2v = r.power(p) # |V|x|V|
-                
-                    for hidx in range(self.numhedges):
-                        hedge = self.hedge2node[hidx]
-                        for vidx in range(len(hedge)):
-                            vi = hedge[vidx]
-                            efeat = []
-                            for nvidx in range(len(hedge)):
-                                nv = hedge[nvidx]
-                                _row = v2v.getrow(vi).toarray()[0]
-                                efeat.append(_row[nv])
-                            self.hedge2nodePE[hidx][vidx] = efeat
-                            for _pe in self.hedge2nodePE[hidx][vidx]:
-                                assert _pe >= 0
-                self.weight_flag = True
+        
+        # extract feature ----------------------------------------------------------------------------------------------------
+        print("Extract features")
+        with open(self.inputdir + self.dataname + "/" + self.dataname + "_data.txt", "r") as f:
+            f.readline()
+            hedge2customer, node2color, node2size, node2group,  = {}, {}, {}, {}
+            
+            for line in f.readlines():
+                order, product, customer, color, size, group = map(int, line.strip().split(','))
+                hidx, vidx = order, self.node_reindexing[product]
+                if hidx not in hedge2customer.keys():
+                    hedge2customer[hidx] = customer
+                if vidx not in node2color.keys():
+                    node2color[vidx] = color
+                if vidx not in node2size.keys():
+                    node2size[vidx] = size
+                if vidx not in node2group.keys():
+                    node2group[vidx] = group
+
+            self.hedge2customer, self.numcustomers = [hedge2customer[idx] for idx in range(len(hedge2customer.keys()))], max(hedge2customer.values()) + 1
+            self.node2color, self.numcolors = [node2color[idx] for idx in range(len(node2color.keys()))], max(node2color.values()) + 1
+            self.node2size, self.numsizes = [node2size[idx] for idx in range(len(node2size.keys()))], max(node2size.values()) + 1
+            self.node2group, self.numgroups = [node2group[idx] for idx in range(len(node2group.keys()))], max(node2group.values()) + 1
+            
+            self.hedge2customer = torch.Tensor(self.hedge2customer)
+            self.node2color = torch.Tensor(self.node2color)
+            self.node2size = torch.Tensor(self.node2size)
+            self.node2group = torch.Tensor(self.node2group)
 
     def get_data(self, type=0, task2=False):
         if task2:
