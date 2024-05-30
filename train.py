@@ -74,13 +74,14 @@ def run_epoch(args, data, dataloader, initembedder, customerembedder, colorembed
                 v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
                 e_feat = data.e_feat[input_nodes['edge']].to(device)
                 # concat feature embedding
-                customer_feat, _ = customerembedder(data.hedge2customer[input_nodes['edge']].long().to(device))
                 color_feat, _ = colorembedder(data.node2color[input_nodes['node']].long().to(device))
                 size_feat, _ = sizeembedder(data.node2size[input_nodes['node']].long().to(device))
                 group_feat, _ = groupembedder(data.node2group[input_nodes['node']].long().to(device))
                 v_feat = torch.concat((v_feat, color_feat, size_feat, group_feat), dim=1)
-                e_feat = torch.concat((e_feat, customer_feat), dim=1)
-                v, e = embedder(blocks, v_feat, e_feat)
+                if not args.custom:
+                    v, e = embedder(blocks, v_feat, e_feat, None, None)
+                else:
+                    v, e = embedder(blocks, v_feat, e_feat, data, customerembedder)
         else:
                 v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
                 e_feat = data.e_feat[input_nodes['edge']].to(device)
@@ -247,7 +248,10 @@ if args.evaltype == "test":
     assert args.fix_seed
     outputdir = "results_test/" + args.dataset_name + "_" + str(args.k) + "/" + initialization + "/"
     outputParamResFname = outputdir + args.model_name + "/param_result.txt"
-    outputdir += args.model_name + "/" + args.param_name +"/" + str(args.seed) + "/" + "custom_embedding/"
+    if args.custom:
+        outputdir += args.model_name + "/" + args.param_name +"/" + str(args.seed) + "/" + "custom_embedding/"
+    else:
+        outputdir += args.model_name + "/" + args.param_name +"/" + str(args.seed) + "/"
     if args.recalculate is False and os.path.isfile(outputdir + "log_test_confusion.txt"):
         sys.exit("Already Run")
 else:
@@ -414,7 +418,7 @@ initembedder.weight = nn.Parameter(A)
 
 # Make embedding with feature
 # 0-342037
-customerembedder = Wrap_Embedding(data.numcustomers, 24, scale_grad_by_freq=False, sparse=False).to(device)
+customerembedder = Wrap_Embedding(data.numcustomers, 48, scale_grad_by_freq=False, sparse=False).to(device)
 # 0-641
 colorembedder = Wrap_Embedding(data.numcolors, 8, scale_grad_by_freq=False, sparse=False).to(device)
 # 0-28
@@ -423,7 +427,7 @@ sizeembedder = Wrap_Embedding(data.numsizes, 8, scale_grad_by_freq=False, sparse
 groupembedder = Wrap_Embedding(data.numgroups, 8, scale_grad_by_freq=False, sparse=False).to(device)
 # Add dimension for embeddings
 args.input_vdim = args.input_vdim + 24
-args.input_edim = args.input_edim + 24
+# args.input_edim = args.input_edim + 24
 
 print("Model:", args.embedder)
 # model init

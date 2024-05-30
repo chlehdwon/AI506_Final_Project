@@ -6,6 +6,7 @@ import pdb
 import math
 import os
 import time
+from functools import partial
 import pickle
 
 # Based on SetTransformer https://github.com/juho-lee/set_transformer
@@ -180,6 +181,7 @@ class WhatsnetLayer(nn.Module):
             self.dec_v.append(PMA(dimension,  dim_hidden, num_heads, 1, ln=ln, numlayers=2))
         self.dec_v.append(nn.Dropout(dropout))
         self.dec_v.append(nn.Linear(dim_hidden, output_edim))
+        self.customer_embed = nn.Linear(48, input_edim)
         
         # For Hyperedge -> Node
         #     Attention part: create node-dependent embedding
@@ -224,7 +226,7 @@ class WhatsnetLayer(nn.Module):
         else:
             return {'q': edges.dst['feat'], 'v': edges.src['feat']}
 
-    def v_reduce_func(self, nodes):
+    def v_reduce_func(self, nodes, customer_feat=None):
         # nodes.mailbox['v' or 'q'].shape = (num batch, hyperedge size, feature dim)
         Q = nodes.mailbox['q'][:,0:1,:]
         v = nodes.mailbox['v']
@@ -300,10 +302,12 @@ class WhatsnetLayer(nn.Module):
                 o = layer(Q, o)
             else:
                 o = layer(o)
+
                 
         return {'o': o}
     
-    def forward(self, g1, g2, vfeat, efeat, vindex=None):
+    def forward(self, g1, g2, vfeat, efeat, data, customer_embedder, vindex=None):
+
         if self.vis_flag:
             self.before = []
             self.after = []
@@ -315,7 +319,14 @@ class WhatsnetLayer(nn.Module):
             if self.re_pe_flag:
                 assert vindex != None
                 g1.srcnodes['node'].data['index'] = vindex[:g1['in'].num_src_nodes()]
-            g1.dstnodes['edge'].data['feat'] = efeat[:g1['in'].num_dst_nodes()]
+
+            if customer_embedder != None:
+                index = data.hedge2customer[g1.dstnodes['edge'].data['_ID'].cpu()].long()
+                custom_feat, _ = customer_embedder(index.to(efeat.device))
+                g1.dstnodes['edge'].data['feat'] = efeat[:g1['in'].num_dst_nodes()] + self.customer_embed(custom_feat)
+            else:
+                g1.dstnodes['edge'].data['feat'] = efeat[:g1['in'].num_dst_nodes()]
+
             g1.update_all(self.v_message_func, self.v_reduce_func, etype='in')
             efeat = g1.dstnodes['edge'].data['o']
             efeat = efeat.squeeze(1)
@@ -335,6 +346,7 @@ class WhatsnetLayer(nn.Module):
             }
             with open(self.savedir + "edv_{}.pkl".format(self.savename), "wb") as f:
                 pickle.dump(save_dict, f)
+    
         
         return [vfeat, efeat]
     
@@ -396,9 +408,9 @@ class Whatsnet(nn.Module):
             self.layers[l].off_vis_flag()
     
                                        
-    def forward(self, blocks, vfeat, efeat, vindex=None):
+    def forward(self, blocks, vfeat, efeat, data=None, customer_embedder=None, vindex=None):
         for l in range(self.num_layers):
-            vfeat, efeat = self.layers[l](blocks[2*l], blocks[2*l+1], vfeat, efeat, vindex)
+            vfeat, efeat = self.layers[l](blocks[2*l], blocks[2*l+1], vfeat, efeat, data, customer_embedder, vindex)
             
         return vfeat, efeat
     
