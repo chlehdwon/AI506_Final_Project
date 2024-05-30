@@ -45,8 +45,7 @@ print("OutputDir = " + outputdir)
 # Initialization --------------------------------------------------------------------
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 dataset_name = args.dataset_name #'citeseer' 'cora'
-opt = 'valid'
-print(f'Device: {device}, Dataset name: {dataset_name}, Option: {opt}')
+print(f'Device: {device}, Dataset name: {dataset_name}')
 
 if args.fix_seed:
     random.seed(args.seed)
@@ -64,14 +63,7 @@ plot_epoch = args.epochs
 
 # Data -----------------------------------------------------------------------------
 data = dl.Hypergraph(args, dataset_name)
-if args.dataset_name == 'task1':
-  valid_data = data.get_data(1)
-  test_data = data.get_data(2)
-elif args.dataset_name == 'task2':
-  valid_data = data.get_data(1, task2=True)
-  test_data = data.get_data(2, task2=True)
-
-#allhedges = torch.LongTensor(np.arange(data.numhedges))
+allhedges = torch.LongTensor(np.arange(data.numhedges))
 ls = [{('node', 'in', 'edge'): -1, ('edge', 'con', 'node'): args.sampling}] * (args.num_layers * 2 + 1)
 full_ls = [{('node', 'in', 'edge'): -1, ('edge', 'con', 'node'): -1}] * (args.num_layers * 2 + 1)
 if data.weight_flag:
@@ -86,17 +78,11 @@ except:
     fullsampler = dgl.dataloading.MultiLayerNeighborSampler(full_ls)
 if args.use_gpu:
     g = g.to(device)
-    valid_data = valid_data.to(device)
-    test_data = test_data.to(device)
-    data.e_feat = data.e_feat.to(device)
-    #hedge_data = allhedges.to(device)
-#else:
-    #hedge_data = allhedges
-#dataloader = dgl.dataloading.NodeDataLoader( g, {"edge": hedge_data}, fullsampler, batch_size=args.bs, shuffle=False, drop_last=False) # , num_workers=4
-if opt == 'valid':
-    dataloader = dgl.dataloading.DataLoader(g, {"edge": valid_data}, sampler, batch_size=args.bs, shuffle=True, drop_last=False)
+    #data.e_feat = data.e_feat.to(device)
+    hedge_data = allhedges.to(device)
 else:
-    dataloader = dgl.dataloading.DataLoader(g, {"edge": test_data}, fullsampler, batch_size=args.bs, shuffle=False, drop_last=False)
+    hedge_data = allhedges
+dataloader = dgl.dataloading.DataLoader( g, {"edge": hedge_data}, fullsampler, batch_size=args.bs, shuffle=False, drop_last=False) # , num_workers=4
 
 args.input_vdim = data.v_feat.size(1)
 args.input_edim = data.e_feat.size(1)
@@ -111,32 +97,11 @@ savefname = "../%s_%d_wv_%d_%s.npy" % (args.dataset_name, args.k, args.input_vdi
 node_list = np.arange(data.numnodes).astype('int')
 
 # A: (data.numnodes, vector_size)의 embedding 생성, 이는 초기 node embedding으로 사용
-if os.path.isfile(savefname) is False:
-    walk_path = random_walk_hyper(args, node_list, data.hedge2node)
-    walks = np.loadtxt(walk_path, delimiter=" ").astype('int')
-    print("Start turning path to strs")
-    split_num = 20
-    pool = ProcessPoolExecutor(max_workers=split_num)
-    process_list = []
-    walks = np.array_split(walks, split_num)
-    result = []
-    for walk in walks:
-        process_list.append(pool.submit(utils.walkpath2str, walk))
-    for p in as_completed(process_list):
-        result += p.result()
-    pool.shutdown(wait=True)
-    walks = result
-    # print(walks)
-    print("Start Word2vec")
-    print("num cpu cores", multiprocessing.cpu_count())
-    w2v = Word2Vec( walks, vector_size=args.input_vdim, window=10, min_count=0, sg=1, epochs=1, workers=multiprocessing.cpu_count())
-    print(w2v.wv['0'])
-    wv = w2v.wv
-    A = [wv[str(i)] for i in range(data.numnodes)]
-    np.save(savefname, A)
-else:
+if os.path.isfile(savefname):
     print("load exist init walks")
     A = np.load(savefname)
+else:
+    print("no existing walks")
 A = StandardScaler().fit_transform(A)
 A = A.astype('float32')
 A = torch.tensor(A).to(device)
@@ -168,19 +133,9 @@ if args.embedder == "whatsnet":
                            weight_dim=args.order_dim, num_heads=args.num_heads, num_layers=args.num_layers, num_inds=args.num_inds,
                            att_type_v=args.att_type_v, agg_type_v=args.agg_type_v, att_type_e=args.att_type_e, agg_type_e=args.agg_type_e,
                            num_att_layer=args.num_att_layer, dropout=args.dropout, weight_flag=data.weight_flag, pe_ablation_flag=pe_ablation_flag).to(device)
-elif args.embedder == "whatsnetHAT":
-    input_vdim = args.input_vdim
-    embedder = WhatsnetHAT(WhatsnetHATLayer, input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, 
-                           weight_dim=args.order_dim, num_heads=args.num_heads, num_layers=args.num_layers, 
-                           att_type_v=args.att_type_v, agg_type_v=args.agg_type_v,
-                           num_att_layer=args.num_att_layer, dropout=args.dropout).to(device)
-elif args.embedder == "whatsnetHNHN":
-    input_vdim = args.input_vdim
-    embedder = WhatsnetHNHN(WhatsnetHNHNLayer, input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, 
-                           weight_dim=args.order_dim, num_heads=args.num_heads, num_layers=args.num_layers, 
-                           att_type_v=args.att_type_v, agg_type_v=args.agg_type_v,
-                           num_att_layer=args.num_att_layer, dropout=args.dropout).to(device)
-    
+else:
+    print("Only whatsnet embedder supported currently")
+
 print("Embedder to Device")
 print("Scorer = ", args.scorer)
 # pick scorer
@@ -205,7 +160,7 @@ elif args.optimizer == "rms":
 scheduler = torch.optim.lr_scheduler.ExponentialLR(optim, gamma=args.gamma)
 loss_fn = nn.CrossEntropyLoss()
 
-# Load Checkpoints ===========================================================================================================================================================================
+# Load Checkpoints =================================================================================================================================
 initembedder.load_state_dict(torch.load(outputdir + "initembedder.pt")) # , map_location=device
 embedder.load_state_dict(torch.load(outputdir + "embedder.pt")) # , map_location=device
 scorer.load_state_dict(torch.load(outputdir + "scorer.pt")) # , map_location=device
@@ -215,7 +170,7 @@ colorembedder.load_state_dict(torch.load(outputdir + "colorembedder.pt")) # , ma
 sizeembedder.load_state_dict(torch.load(outputdir + "sizeembedder.pt")) # , map_location=device
 groupembedder.load_state_dict(torch.load(outputdir + "groupembedder.pt")) # , map_location=device
 
-# Test ===========================================================================================================================================================================
+# Test =============================================================================================================================================
 initembedder.eval()
 embedder.eval()
 scorer.eval()
@@ -230,18 +185,23 @@ with torch.no_grad():
     
     total_pred = []
     total_label = []
-    #num_data = 0
+    num_data = 0
     
     # Batch ==============================================================
-    for input_nodes, output_nodes, blocks in tqdm(dataloader): #, desc="batch"):      
+    for input_nodes, output_nodes, blocks in tqdm(dataloader): #, desc="batch"):     
         # Wrap up loader
         blocks = [b.to(device) for b in blocks]
         srcs, dsts = blocks[-1].edges(etype='in')
-        nodeindices = srcs.to(device)
-        hedgeindices = dsts.to(device)
-        #nodeindices = blocks[-1].srcdata[dgl.NID]['node'][srcs]
-        #hedgeindices = blocks[-1].srcdata[dgl.NID]['edge'][dsts]
+        nodeindices_in_batch = srcs.to(device)
+        hedgeindices_in_batch = dsts.to(device)
+        nodeindices = blocks[-1].srcdata[dgl.NID]['node'][srcs]
+        hedgeindices = blocks[-1].srcdata[dgl.NID]['edge'][dsts]
         nodelabels = blocks[-1].edges[('node','in','edge')].data['label'].long().to(device)
+        #print('nodeindices_in_batch: ', nodeindices_in_batch)
+        #print('hedgeindices_in_batch: ', hedgeindices_in_batch)
+        #print('nodeindices: ', nodeindices)
+        #print('hedgeindices: ', hedgeindices)
+        #print('nodelabels ', nodelabels)
         
         # Get Embedding
         if args.embedder == "whatsnet":
@@ -265,17 +225,27 @@ with torch.no_grad():
             v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
             e_feat = data.e_feat[input_nodes['edge']].to(device)
             v, e = embedder(blocks, v_feat, e_feat)
-                
+
         # Predict Class
-        '''
-        hembedding = e[hedgeindices_in_batch]
-        vembedding = v[nodeindices_in_batch]
-        input_embeddings = torch.cat([hembedding,vembedding], dim=1)
-        predictions = scorer(input_embeddings)
+        if args.dataset_name == 'task1':
+            hembedding = e[hedgeindices_in_batch]
+            input_embeddings = hembedding
+            predictions = scorer(input_embeddings)
+            
+            total_pred.append(predictions.detach())
+            pred_cls = torch.argmax(predictions, dim=1)
+            total_label.append(nodelabels.detach())
+
+        elif args.dataset_name == 'task2':
+            hembedding = e[hedgeindices_in_batch]
+            vembedding = v[nodeindices_in_batch]
+            input_embeddings = torch.cat([hembedding, vembedding], dim=1)
+            predictions = scorer(input_embeddings)
+            
+            total_pred.append(predictions.detach())
+            pred_cls = torch.argmax(predictions, dim=1)
+            total_label.append(nodelabels.detach())
         
-        total_pred.append(predictions.detach())
-        pred_cls = torch.argmax(predictions, dim=1)
-        total_label.append(nodelabels.detach())
         '''
         if args.scorer == "sm":
             if args.dataset_name == 'task1':
@@ -298,7 +268,10 @@ with torch.no_grad():
 
             elif args.dataset_name == 'task2':
                 if opt == 'valid':
+                    print('nodelabels:', nodelabels)
+                    print('nodeindices:', nodeindices)
                     valid_indices = torch.nonzero((nodelabels == 2) | (nodelabels == 3)).squeeze()
+                    #print('valid_indices: ', valid_indices)
                     hedgeindices = hedgeindices[valid_indices]
                     nodeindices = nodeindices[valid_indices]
                     nodelabels = nodelabels[valid_indices]
@@ -321,72 +294,159 @@ with torch.no_grad():
                     predictions = scorer(input_embeddings)
               
             else:
-                raise ValueError("Not supported data type")
-              
+                raise ValueError("Not supported data type")      
         elif args.scorer == "im":
             predictions, nodelabels = scorer(blocks[-1], v, e)
-        total_pred.append(predictions.detach())
-        total_label.append(nodelabels.detach())
-        
         '''
+        #total_pred.append(predictions.detach())
+        #total_label.append(nodelabels.detach())
+        
         for v, h, vpred, vlab in zip(nodeindices.tolist(), hedgeindices.tolist(), pred_cls.detach().cpu().tolist(), nodelabels.detach().cpu().tolist()):
             assert v in data.hedge2node[h]
             for vorder in range(len(data.hedge2node[h])):
                 if data.hedge2node[h][vorder] == v:
                     assert vlab == data.hedge2nodepos[h][vorder]
+            '''
             if args.binning > 0:
                 allpredictions[h][v] = data.binindex[int(vpred)]
             elif args.dataset_name == "Etail":
                 allpredictions[h][v] = int(vpred) + 1.0
             else:
-                allpredictions[h][v] = int(vpred)
+            '''
+            allpredictions[h][v] = int(vpred)
         num_data += predictions.shape[0]
-        '''
 
-    # Calculate Accuracy (For Validation)    
+    print('Prediction End')
+    #print('allpredictions: ', allpredictions)
+    print('allpredictions length: ', len(allpredictions))
+
+    '''
+    # Calculate Accuracy (For Validation)
     total_label = torch.cat(total_label, dim=0)
+    print(f'total label:  {total_label.shape}, {total_label}')
     total_pred = torch.cat(total_pred)
+    print(f'total pred:  {total_pred.shape}, {total_pred}')
     pred_cls = torch.argmax(total_pred, dim=1)
-    eval_acc = torch.eq(pred_cls, total_label).sum().item() / len(total_label)
+    print(f'pred_cls:  {pred_cls.shape}, {pred_cls}')
+    acc = torch.eq(pred_cls, total_label).sum().item() / len(total_label)
+    print(f'accuracy: {acc}')
+
     y_test = total_label.cpu().numpy()
     pred = pred_cls.cpu().numpy()
-    confusion, accuracy, precision, recall, f1_micro = utils.get_clf_eval(y_test, pred, avg='micro', outputdim=args.output_dim)
-    with open(outputdir + "all_micro.txt", "w") as f:
-        f.write("Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(accuracy,precision,recall,f1_micro))
-    confusion, accuracy, precision, recall, f1_macro = utils.get_clf_eval(y_test, pred, avg='macro', outputdim=args.output_dim)
-    with open(outputdir + "all_confusion.txt", "w") as f:
-        for r in range(args.output_dim):
-            for c in range(args.output_dim):
-                f.write(str(confusion[r][c]))
-                if c == args.output_dim -1 :
-                    f.write("\n")
-                else:
-                    f.write("\t")
-    with open(outputdir + "all_macro.txt", "w") as f:               
-        f.write("Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(accuracy,precision,recall,f1_macro))
+    
+    if opt == 'valid':
+        confusion, accuracy, precision, recall, f1_micro = utils.get_clf_eval(y_test, pred, avg='micro', outputdim=args.output_dim)
+        with open(savedir + "all_micro.txt", "w") as f:
+            f.write("Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(accuracy,precision,recall,f1_micro))
         
-    with open(outputdir + "prediction.txt", "w") as f:
+        confusion, accuracy, precision, recall, f1_macro = utils.get_clf_eval(y_test, pred, avg='macro', outputdim=args.output_dim)
+        with open(savedir + "all_confusion.txt", "w") as f:
+            for r in range(args.output_dim):
+                for c in range(args.output_dim):
+                    f.write(str(confusion[r][c]))
+                    if c == args.output_dim -1 :
+                        f.write("\n")
+                    else:
+                        f.write("\t")
+        with open(savedir + "all_macro.txt", "w") as f:               
+            f.write("Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(accuracy,precision,recall,f1_macro))
+    '''
+    savedir = "predictions/" + args.dataset_name + "/"
+    if os.path.isdir(savedir) is False:
+        os.makedirs(savedir)
+
+    with open(savedir + "prediction.txt", "w") as f:
         for h in range(data.numhedges):
             line = []
             for v in data.hedge2node[h]:
                 line.append(str(allpredictions[h][v]))
             f.write("\t".join(line) + "\n")
-            
-    # output
-    if os.path.isdir("train_results/{}/".format(args.dataset_name)) is False:
-        os.makedirs("train_results/{}/".format(args.dataset_name))
-    with open("train_results/{}/prediction_{}_{}.txt".format(args.dataset_name, args.outputname, args.seed), "w") as f:
-        for h in range(data.numhedges):
-            line = []
-            for v in data.hedge2node[h]:
+
+    # Task1 Prediction
+    if args.dataset_name == 'task1':
+        # 1. Valid
+        # 1-1. Load Valid Data
+        valid_data = []
+        valid_filename = f'{args.inputdir}/{args.dataset_name}/valid_hindex_0.txt'
+        with open(valid_filename) as f:
+            for line in f.readlines():
+                line = line.rstrip()
+                valid_data.append(int(line))
+        print(f'valid_data: {valid_data[:10]}, length {len(valid_data)}')
+        # 1-2. Make Prediction
+        with open(savedir + "valid_prediction.txt", "w") as f:
+            for h in valid_data:
+                line = []
+                v = data.hedge2node[h][0]   # get first node
+                line.append(str(h))
                 line.append(str(allpredictions[h][v]))
-            f.write("\t".join(line) + "\n")
-            
-    if os.path.isdir("train_results/{}/f1/".format(args.dataset_name)) is False:
-        os.makedirs("train_results/{}/f1/".format(args.dataset_name))
-    if os.path.isfile("train_results/{}/f1/{}.txt".format(args.dataset_name, args.outputname)) is False:
-        with open("train_results/{}/f1/{}.txt".format(args.dataset_name, args.outputname), "w") as f:
-            f.write("seed,f1micro,f1macro\n")
-    with open("train_results/{}/f1/{}.txt".format(args.dataset_name, args.outputname), "+a") as f:
-        f.write(",".join([str(args.seed), str(f1_micro), str(f1_macro)]) + "\n")
- 
+                f.write("\t".join(line) + "\n")
+        # 2. Test
+        # 2-1. Load Test Data
+        test_data = []
+        test_filename = f'{args.inputdir}/{args.dataset_name}/test_hindex_0.txt'
+        with open(test_filename) as f:
+            for line in f.readlines():
+                line = line.rstrip()
+                test_data.append(int(line))
+        print(f'test_data: {test_data[:10]}, length {len(test_data)}')
+        # 2-2. Make Prediction
+        with open(savedir + "test_prediction.csv", "w") as f:
+            for h in test_data:
+                line = []
+                v = data.hedge2node[h][0]   # get first node
+                line.append(str(h))
+                line.append(str(allpredictions[h][v]))
+                f.write("\t".join(line) + "\n")
+
+    # Task2 Prediction
+    elif args.dataset_name == 'task2':
+        # 1. Valid
+        # 1-1. Load Valid Data
+        valid_data = []
+        valid_filename = f'{args.inputdir}/{args.dataset_name}/valid_hindex_0_node.txt'
+        with open(valid_filename) as f:
+            for line in f.readlines():
+                line = line.rstrip()
+                line = tuple(map(int, line.split('\t')))
+                valid_data.append(line)
+        print(f'valid_data: {valid_data[:10]}, length {len(valid_data)}')
+        # 1-2. Make Prediction
+        with open(savedir + "valid_prediction.txt", "w") as f:
+            for h, v in valid_data:
+                line = []
+                line.append(str(h))
+                line.append(str(v))
+
+                h_nodes = data.hedge2node[h]
+                # Change v to appropriate node index
+                v_reindexing = data.node_reindexing[v]
+                #print(f'h: {h}, nodes in h: {h_nodes}, v: {v} -> {v_reindexing}')
+                assert v_reindexing in h_nodes
+                #v_idx = h_nodes.index(v_reindexing)
+                line.append(str(allpredictions[h][v_reindexing]))
+                f.write("\t".join(line) + "\n")
+        # 2. Test
+        # 2-1. Load Test Data
+        test_data = []
+        test_filename = f'{args.inputdir}/{args.dataset_name}/test_hindex_0_node.txt'
+        with open(test_filename) as f:
+            for line in f.readlines():
+                line = line.rstrip()
+                line = tuple(map(int, line.split('\t')))
+                test_data.append(line)
+        print(f'test_data: {test_data[:10]}, length {len(test_data)}')
+        # 2-2. Make Prediction
+        with open(savedir + "test_prediction.csv", "w") as f:
+            for h, v in test_data:
+                line = []
+                line.append(str(h))
+                line.append(str(v))
+
+                h_nodes = data.hedge2node[h]
+                # Change v to appropriate node index
+                v_reindexing = data.node_reindexing[v]
+                assert v_reindexing in h_nodes
+                #v_idx = h_nodes.index(v_reindexing)
+                line.append(str(allpredictions[h][v_reindexing]))
+                f.write("\t".join(line) + "\n")
