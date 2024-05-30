@@ -93,6 +93,10 @@ def parse_args():
     parser.add_argument('--gpu', default=-1, type=int)
     parser.add_argument('--splits', action='store_true')
 
+    # wandb args
+    parser.add_argument('--use_wandb', type=int, default=0)
+    parser.add_argument('--run_name', type=str, default='NoRunName')
+
     args = parser.parse_args()
     
     # vorder
