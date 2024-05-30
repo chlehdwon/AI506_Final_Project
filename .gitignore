@@ -7,4 +7,14 @@ results_test/
 nongraph_results/
 results/
 Untitled.ipynb
-
+AI506_baseline/task1_checkpoint
+AI506_baseline/task1_checkpoint_cc
+AI506_baseline/task1_checkpoint_embed
+AI506_baseline/task2_checkpoint
+AI506_baseline/task1/task1_data.txt
+AI506_baseline/task1/task1_train_label.txt
+AI506_baseline/task1/task1_valid_label.txt
+AI506_baseline/task2/task2_data.txt
+AI506_baseline/task2/task2_train_label.txt
+AI506_baseline/task2/task2_valid_label.txt
+AI506_baseline/wandb
