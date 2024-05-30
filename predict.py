@@ -29,8 +29,6 @@ from initialize.initial_embedder import MultipleEmbedding
 from initialize.random_walk_hyper import random_walk_hyper
 
 from model.Whatsnet import Whatsnet, WhatsnetLayer
-from model.WhatsnetHAT import WhatsnetHAT, WhatsnetHATLayer
-from model.WhatsnetHNHN import WhatsnetHNHN, WhatsnetHNHNLayer
 from model.layer import FC, Wrap_Embedding
 
 # Make Output Directory --------------------------------------------------------------------------------------------------------------
