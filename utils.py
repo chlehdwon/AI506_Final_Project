@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument('--scheduler', default='multi', type=str)
     parser.add_argument('--lr', default=0.0005, type=float)
     parser.add_argument('--gamma', default=0.99, type=float)
-    parser.add_argument('--patience', default=5, type=int)
+    parser.add_argument('--patience', default=10, type=int)
     parser.add_argument('--dropout', default=0.5, type=float)
     parser.add_argument('--test_epoch', default=1, type=int)
     parser.add_argument('--save_epochs', default=-1, type=int)
@@ -67,6 +67,7 @@ def parse_args():
     parser.add_argument('--vorder_input', default='', type=str, help="positional encoding input for OrderPE")
     parser.add_argument('--eorder_input', default='', type=str, help="positional encoding input for OrderPE")
     parser.add_argument('--whole_order', action='store_true')
+    parser.add_argument('--custom', action='store_true')
     
     # model parameter
     parser.add_argument('--num_layers', default=1, type=int)

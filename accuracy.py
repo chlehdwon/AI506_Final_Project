@@ -31,10 +31,7 @@ from initialize.random_walk_hyper import random_walk_hyper
 from model.Whatsnet import Whatsnet, WhatsnetLayer
 from model.layer import FC, Wrap_Embedding
 
-import wandb
-
-
-def run_epoch(args, data, dataloader, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, optim, scheduler, loss_fn, opt="train"):
+def run_epoch(args, data, dataloader, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, opt="train"):
     total_pred = []
     total_label = []
     num_data = 0
@@ -137,31 +134,14 @@ def run_epoch(args, data, dataloader, initembedder, customerembedder, colorembed
             predictions, nodelabels = scorer(blocks[-1], v, e)
         total_pred.append(predictions.detach())
         total_label.append(nodelabels.detach())
-        
-        # Back Propagation
-        num_data += predictions.shape[0]
-        num_recon_data += input_nodes['node'].shape[0]
-        ce_loss = loss_fn(predictions, nodelabels)
-        loss = ce_loss + args.rw * recon_loss
-        if opt == "train":
-            optim.zero_grad()
-            loss.backward() 
-            optim.step()
-        total_loss += (loss.item() * predictions.shape[0])
-        total_ce_loss += (ce_loss.item() * predictions.shape[0])
-        total_recon_loss += (recon_loss.item() * input_nodes['node'].shape[0]) # this is fixed as zero
-        if opt == "train":
-            torch.cuda.empty_cache()
 
-        
-        lr = optim.param_groups[0]['lr']
-        description = f'Step: {step+1}/{len(dataloader)} || Lr: {round(lr, 9)} || Loss: {round(loss.item(), 4)}'
+        description = f'Step: {step+1}/{len(dataloader)}'
         pbar.set_description(description)
     
     print("Time : ", time.time() - ts)
     print(num_data)
     
-    return total_pred, total_label, total_loss / num_data, total_ce_loss / num_data, total_recon_loss / num_recon_data, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, optim, scheduler
+    return total_pred, total_label
 
 def run_test_epoch(args, data, testdataloader, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, loss_fn):
     total_pred = []
@@ -452,163 +432,35 @@ if args.scorer == "sm":
     else:
       raise ValueError("Not supported dataset type")
 
-if args.optimizer == "adam":
-    optim = torch.optim.Adam(list(initembedder.parameters())+list(customerembedder.parameters())+list(colorembedder.parameters())+list(sizeembedder.parameters())+list(groupembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr) #, weight_decay=args.weight_decay)
-elif args.optimizer == "adamw":
-    optim = torch.optim.AdamW(list(initembedder.parameters())+list(customerembedder.parameters())+list(colorembedder.parameters())+list(sizeembedder.parameters())+list(groupembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr)
-elif args.optimizer == "rms":
-    optim = torch.optim.RMSprop(list(initembedder.parameters())+list(customerembedder.parameters())+list(colorembedder.parameters())+list(sizeembedder.parameters())+list(groupembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr)
-scheduler = torch.optim.lr_scheduler.ExponentialLR(optim, gamma=args.gamma)
-
-loss_fn = nn.CrossEntropyLoss()
-
 # Train =================================================================================================================================================================================
-train_acc=0
-patience = 0
-best_eval_acc = 0
-epoch_start = 1
-if os.path.isfile(outputdir + "checkpoint.pt") and args.recalculate is False:
-    checkpoint = torch.load(outputdir + "checkpoint.pt") #, map_location=device)
-    epoch_start = checkpoint['epoch'] + 1
-    initembedder.load_state_dict(checkpoint['initembedder'])
-    customerembedder.load_state_dict(checkpoint['customerembedder'])
-    colorembedder.load_state_dict(checkpoint['colorembedder'])
-    sizeembedder.load_state_dict(checkpoint['sizeembedder'])
-    groupembedder.load_state_dict(checkpoint['groupembedder'])
-    embedder.load_state_dict(checkpoint['embedder'])
-    scorer.load_state_dict(checkpoint['scorer'])
-    optim.load_state_dict(checkpoint['optimizer'])
-    scheduler.load_state_dict(checkpoint['scheduler'])
-    best_eval_acc = checkpoint['best_eval_acc']
-    patience = checkpoint['patience']    
-    
-    print("Load {} epoch trainer".format(epoch_start))
-    print("best_eval_acc = {}\tpatience = {}".format(best_eval_acc, patience))
 
-    if args.save_epochs > 0:
-        print("Model Save")
-        modelsavename = outputdir + "embedder.pt"
-        torch.save(embedder.state_dict(), modelsavename)
-        scorersavename = outputdir + "scorer.pt"
-        torch.save(scorer.state_dict(), scorersavename)
-        initembeddersavename = outputdir + "initembedder.pt"
-        torch.save(initembedder.state_dict(),initembeddersavename)
-        customerembeddersavename = outputdir + "customerembedder.pt"
-        torch.save(customerembedder.state_dict(),customerembeddersavename)
-        colorembeddersavename = outputdir + "colorembedder.pt"
-        torch.save(colorembedder.state_dict(),colorembeddersavename)
-        sizeembeddersavename = outputdir + "sizeembedder.pt"
-        torch.save(sizeembedder.state_dict(),sizeembeddersavename)
-        groupembeddersavename = outputdir + "groupembedder.pt"
-        torch.save(groupembedder.state_dict(),groupembeddersavename)
-    
-# Wandb setting
-if args.use_wandb:
-    wandb.init(
-        # set the wandb project where this run will be logged
-        project="WhatsNet",
-        name=args.run_name,
-    )
+initembedder.load_state_dict(torch.load(outputdir + 'initembedder.pt'))
+customerembedder.load_state_dict(torch.load(outputdir + 'customerembedder.pt'))
+colorembedder.load_state_dict(torch.load(outputdir + 'colorembedder.pt'))
+sizeembedder.load_state_dict(torch.load(outputdir + 'sizeembedder.pt'))
+groupembedder.load_state_dict(torch.load(outputdir + 'groupembedder.pt'))
+embedder.load_state_dict(torch.load(outputdir + 'embedder.pt'))
+scorer.load_state_dict(torch.load(outputdir + 'scorer.pt'))
 
-for epoch in tqdm(range(epoch_start, args.epochs + 1), desc='Epoch'): # tqdm
-    print("Training")
-    
-    # Training stage
-    initembedder.train()
-    customerembedder.train()
-    colorembedder.train()
-    sizeembedder.train()
-    groupembedder.train()
-    embedder.train()
-    scorer.train()
-    # # Calculate Accuracy & Epoch Loss
-    total_pred, total_label, train_loss, train_ce_loss, train_recon_loss, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, optim, scheduler = run_epoch(args, data, dataloader, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, optim, scheduler, loss_fn, opt="train")
-    total_pred = torch.cat(total_pred)
-    total_label = torch.cat(total_label, dim=0)
-    pred_cls = torch.argmax(total_pred, dim=1)
-    train_acc = torch.eq(pred_cls, total_label).sum().item() / len(total_label)
-    scheduler.step()
-    print("%d epoch: Training loss : %.4f (%.4f, %.4f) / Training acc : %.4f\n" % (epoch, train_loss, train_ce_loss, train_recon_loss, train_acc))
-    if args.use_wandb:
-        wandb.log({'train_loss': train_loss, 'train_ce_loss': train_ce_loss, 'train_recon_loss': train_recon_loss, 'train_acc': train_acc})
-    with open(outputdir + "log_train.txt", "+a") as f:
-        f.write("%d epoch: Training loss : %.4f (%.4f, %.4f) / Training acc : %.4f\n" % (epoch, train_loss, train_ce_loss, train_recon_loss, train_acc))
-        
-    # Test ===========================================================================================================================================================================
-    if epoch % test_epoch == 0:
-        initembedder.eval()
-        customerembedder.eval()
-        colorembedder.eval()
-        sizeembedder.eval()
-        groupembedder.eval()
-        embedder.eval()
-        scorer.eval()
-        
-        with torch.no_grad():
-            total_pred, total_label, eval_loss, eval_ce_loss, eval_recon_loss, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, optim, scheduler = run_epoch(args, data, validdataloader, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, optim, scheduler, loss_fn, opt="valid")
-        # Calculate Accuracy & Epoch Loss
-        total_label = torch.cat(total_label, dim=0)
-        total_pred = torch.cat(total_pred)
-        pred_cls = torch.argmax(total_pred, dim=1)
-        eval_acc = torch.eq(pred_cls, total_label).sum().item() / len(total_label)
-        y_test = total_label.cpu().numpy()
-        pred = pred_cls.cpu().numpy()
-        confusion, accuracy, precision, recall, f1 = utils.get_clf_eval(y_test, pred, avg='micro', outputdim=args.output_dim)
-        if args.use_wandb:
-            wandb.log({'eval_loss': eval_loss, 'eval_ce_loss': eval_ce_loss, 'eval_recon_loss': eval_recon_loss, 'eval_accuracy': accuracy})
-        with open(outputdir + "log_valid_micro.txt", "+a") as f:
-            f.write("{} epoch:Test Loss:{} ({}, {})/Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(epoch, eval_loss, eval_ce_loss, eval_recon_loss, accuracy, precision, recall, f1))
-        confusion, accuracy, precision, recall, f1 = utils.get_clf_eval(y_test, pred, avg='macro', outputdim=args.output_dim)
-        with open(outputdir + "log_valid_confusion.txt", "+a") as f:
-            for r in range(args.output_dim):
-                for c in range(args.output_dim):
-                    f.write(str(confusion[r][c]))
-                    if c == args.output_dim -1 :
-                        f.write("\n")
-                    else:
-                        f.write("\t")
-        with open(outputdir + "log_valid_macro.txt", "+a") as f:               
-            f.write("{} epoch:Test Loss:{} ({}, {})/Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(epoch, eval_loss, eval_ce_loss, eval_recon_loss, accuracy,precision,recall,f1))
+# Test ===========================================================================================================================================================================
 
-        if best_eval_acc < eval_acc:
-            print(f'{best_eval_acc} -> {eval_acc}')
-            best_eval_acc = eval_acc
-            patience = 0
-            if args.evaltype == "test" or args.save_epochs > 0:
-                print("Model Save")
-                modelsavename = outputdir + "embedder.pt"
-                torch.save(embedder.state_dict(), modelsavename)
-                scorersavename = outputdir + "scorer.pt"
-                torch.save(scorer.state_dict(), scorersavename)
-                initembeddersavename = outputdir + "initembedder.pt"
-                torch.save(initembedder.state_dict(),initembeddersavename)
-                customerembeddersavename = outputdir + "customerembedder.pt"
-                torch.save(customerembedder.state_dict(),customerembeddersavename)
-                colorembeddersavename = outputdir + "colorembedder.pt"
-                torch.save(colorembedder.state_dict(),colorembeddersavename)
-                sizeembeddersavename = outputdir + "sizeembedder.pt"
-                torch.save(sizeembedder.state_dict(),sizeembeddersavename)
-                groupembeddersavename = outputdir + "groupembedder.pt"
-                torch.save(groupembedder.state_dict(),groupembeddersavename)
-        else:
-            patience += 1
+initembedder.eval()
+customerembedder.eval()
+colorembedder.eval()
+sizeembedder.eval()
+groupembedder.eval()
+embedder.eval()
+scorer.eval()
 
-        if patience > args.patience:
-            break
-        
-        torch.save({
-            'epoch': epoch,
-            'embedder': embedder.state_dict(),
-            'scorer' : scorer.state_dict(),
-            'initembedder' : initembedder.state_dict(),
-            'customerembedder': customerembedder.state_dict(),
-            'colorembedder': colorembedder.state_dict(),
-            'sizeembedder': sizeembedder.state_dict(),
-            'groupembedder': groupembedder.state_dict(),
-            'scheduler' : scheduler.state_dict(),
-            'optimizer': optim.state_dict(),
-            'best_eval_acc' : best_eval_acc,
-            'patience' : patience
-            }, outputdir + "checkpoint.pt")
-
-
+with torch.no_grad():
+    total_pred, total_label = run_epoch(args, data, validdataloader, initembedder, customerembedder, colorembedder, sizeembedder, groupembedder, embedder, scorer, opt="valid")
+# Calculate Accuracy & Epoch Loss
+total_label = torch.cat(total_label, dim=0)
+total_pred = torch.cat(total_pred)
+pred_cls = torch.argmax(total_pred, dim=1)
+eval_acc = torch.eq(pred_cls, total_label).sum().item() / len(total_label)
+y_test = total_label.cpu().numpy()
+pred = pred_cls.cpu().numpy()
+confusion, accuracy, precision, recall, f1 = utils.get_clf_eval(y_test, pred, avg='micro', outputdim=args.output_dim)
+confusion, accuracy, precision, recall, f1 = utils.get_clf_eval(y_test, pred, avg='macro', outputdim=args.output_dim)
+print(accuracy)
