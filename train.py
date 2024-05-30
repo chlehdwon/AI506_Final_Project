@@ -29,10 +29,6 @@ from initialize.initial_embedder import MultipleEmbedding
 from initialize.random_walk_hyper import random_walk_hyper
 
 from model.Whatsnet import Whatsnet, WhatsnetLayer
-from model.WhatsnetIM import WhatsnetIM
-from model.WhatsnetLSPE import WhatsnetLSPE, WhatsnetLSPELayer
-from model.WhatsnetHAT import WhatsnetHAT, WhatsnetHATLayer
-from model.WhatsnetHNHN import WhatsnetHNHN, WhatsnetHNHNLayer
 from model.layer import FC, Wrap_Embedding
 
 import wandb
@@ -430,30 +426,15 @@ args.input_edim = args.input_edim + 24
 
 print("Model:", args.embedder)
 # model init
-if args.embedder == "whatsnetLSPE":
-    embedder = WhatsnetLSPE(WhatsnetLSPELayer, args.input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, 
-                           weight_dim=args.order_dim, num_heads=args.num_heads, num_layers=args.num_layers, num_inds=args.num_inds,
-                           att_type_v=args.att_type_v, agg_type_v=args.agg_type_v, att_type_e=args.att_type_e, agg_type_e=args.agg_type_e,
-                           num_att_layer=args.num_att_layer, dropout=args.dropout).to(device)
-elif args.embedder == "whatsnet":    
+if args.embedder == "whatsnet":  
     input_vdim = args.input_vdim
     pe_ablation_flag = args.pe_ablation
     embedder = Whatsnet(WhatsnetLayer, input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, 
-                           weight_dim=args.order_dim, num_heads=args.num_heads, num_layers=args.num_layers, num_inds=args.num_inds,
-                           att_type_v=args.att_type_v, agg_type_v=args.agg_type_v, att_type_e=args.att_type_e, agg_type_e=args.agg_type_e,
-                           num_att_layer=args.num_att_layer, dropout=args.dropout, weight_flag=data.weight_flag, pe_ablation_flag=pe_ablation_flag, vis_flag=args.analyze_att).to(device)
-elif args.embedder == "whatsnetHAT":
-    input_vdim = args.input_vdim
-    embedder = WhatsnetHAT(WhatsnetHATLayer, input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, 
-                           weight_dim=args.order_dim, num_heads=args.num_heads, num_layers=args.num_layers, 
-                           att_type_v=args.att_type_v, agg_type_v=args.agg_type_v,
-                           num_att_layer=args.num_att_layer, dropout=args.dropout).to(device)
-elif args.embedder == "whatsnetHNHN":
-    input_vdim = args.input_vdim
-    embedder = WhatsnetHNHN(WhatsnetHNHNLayer, input_vdim, args.input_edim, args.dim_hidden, args.dim_vertex, args.dim_edge, 
-                           weight_dim=args.order_dim, num_heads=args.num_heads, num_layers=args.num_layers, 
-                           att_type_v=args.att_type_v, agg_type_v=args.agg_type_v,
-                           num_att_layer=args.num_att_layer, dropout=args.dropout).to(device)
+        weight_dim=args.order_dim, num_heads=args.num_heads, num_layers=args.num_layers, num_inds=args.num_inds,
+        att_type_v=args.att_type_v, agg_type_v=args.agg_type_v, att_type_e=args.att_type_e, agg_type_e=args.agg_type_e,
+        num_att_layer=args.num_att_layer, dropout=args.dropout, weight_flag=data.weight_flag, pe_ablation_flag=pe_ablation_flag, vis_flag=args.analyze_att).to(device)
+else:
+    print("Only whatsnet embedder supported currently")
 
     
 print("Embedder to Device")
@@ -466,9 +447,6 @@ if args.scorer == "sm":
       scorer = FC(args.dim_vertex + args.dim_edge, args.dim_edge, args.output_dim, args.scorer_num_layers, args.dropout).to(device)
     else:
       raise ValueError("Not supported dataset type")
-        
-elif args.scorer == "im": #whatsnet
-    scorer = WhatsnetIM(args.dim_vertex, args.output_dim, dim_hidden=args.dim_hidden, num_layer=args.scorer_num_layers).to(device)
 
 if args.optimizer == "adam":
     optim = torch.optim.Adam(list(initembedder.parameters())+list(customerembedder.parameters())+list(colorembedder.parameters())+list(sizeembedder.parameters())+list(groupembedder.parameters())+list(embedder.parameters())+list(scorer.parameters()), lr=args.lr) #, weight_decay=args.weight_decay)

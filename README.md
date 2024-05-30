@@ -1,127 +1,32 @@
-# Classification of Edge-dependent Labels of Nodes in Hypergraphs
+# AI506 Term Project: E-commerce Product Return Prediction
 
-We provide (1) datasets and source code for (2) benchmark task, (3) downstream task and (4) ablation study of WHATsNET in the paper: [Classification of Edge-Dependent Labels of Nodes in Hypergraphs](https://arxiv.org/abs/2306.03032), Minyoung Choe, Sunwoo Kim, Jaemin Yoo, and Kijung Shin, KDD 2023.
+> <b>KAIST 2024 Spring AI506: Data Mining and Search</b>
 
-(1) **Datasets**
+## Project Summary
 
-We provide six real-world datasets for our new benchmark task(`/dataset/`) and preprocessing code (`/dataset/PreprocessCode/`)
+The ultimate goal of this project is to practice data mining research by predicting product returns in e-commerce settings.
 
-- Co-authorship : DBLP and AMinerAuthor
-- Email : Enron and Eu
-- StackOverflow: Biology and Physics
+Our method is designed to solve 2 E-commerce Product Return Prediction tasks: (1) Order Return Prediction and (2) Product Return Prediction.
 
-```
-# File Organization
+It models complex relations between orders and products as **hypergraphs** based on the **WHATsNET** paper: [Classification of Edge-Dependent Labels of Nodes in Hypergraphs](https://arxiv.org/abs/2306.03032)
 
-|__ hypergraph.txt              # used for constructing hypergraph; i-th line indicates i-th hyperedge includes v_1, v_2, ...
-|__ hypergraph_pos.txt          # used for edge-dependent node labels; i-th line indicates depending on i-th hyperedge v_1's label, v_2's label, ... (same order as hypergraph.txt)
-|__ [valid/test]_hindex_0.txt   # used for splitting train/valid/test
-```
+The contributions of this project are the following:
 
-_Due to the large size of the dataset, only 'StackOverflowBiology' and 'DBLP' is visible now in the anonymous GitHub_
+- Our proposed method is a effective method for prediction of product returns based on hypergraphs.
+- It is effective and comparable to naive methods such as random guessing, SVM, or random forests.
+- Initialization of node embeddings from product features (color, size, product group) which are concatenated to random walk initialization.
+- Implementation of Customer-dependent MAB for consideration of customer preference on product return.
 
-(2) **Benchmark Task**
+## Team Information
 
-We provide source code for running WHATsNET as well as nine competitors in all the above benchmark datasets
-
-- BaselineU and BaselineP
-- HNHN, HGNN, HCHA, HAT, UniGCNII, HNN
-- HST, AST
-- WHATsNET
-
-(3) **Downstream Task**
-
-We apply our benchmark task on the following downstream tasks,
-
-- Ranking Aggregation: https://github.com/uthsavc/hypergraph-halo-ranking
-- Clustering: https://github.com/pnnl/HyperNetX/blob/master/tutorials/Tutorial%2011%20-%20Laplacians%20and%20Clustering.ipynb
-- Product Return Prediction: https://github.com/jianboli/HyperGo
-
-(4) Reproducing _ALL_ results in Paper
-
-- **Ablation Studies** of WHATsNET
-- w/o WithinATT and WithinOrderPE
-- WHATsNET-IM
-- Positional encodings schemes
-- Replacing WithinATT in updating node embeddings
-- Number of inducing points
-- Types of node centralities
-- **Visualization** of WHATsNET
-- **Evaluation on Node Label Distribution Preservation** of WHATsNET
-
----
-
-## How to Run
-
-### Preprocessing
-
-Before training WHATsNET, calculating node centralities is required
-
-```
-cd preprocess
-python nodecentrality.py --algo [degree,kcore,pagerank,eigenvec] --dataname [name of dataset]
-```
-
-### Run WHATsNET
-
-You can
-
-- train WHATsNET
-- evaluate WHATsNET on JSD of node-level label dist.
-- predict edge-dependent node labels by trained WHATsNET
-- analysis node embeddings for visualization: concatenated embeddings of a node and hyperedge pair, node embeddings before/after WithinATT
-
-by following below code,
-
-```
-python train.py/evaluate.py/predict/analysis.py  --vorder_input "degree_nodecentrality,eigenvec_nodecentrality,pagerank_nodecentrality,kcore_nodecentrality"
-                                                 --embedder whatsnet --att_type_v OrderPE --agg_type_v PrevQ --att_type_e OrderPE --agg_type_e PrevQ
-                                                 --dataset_name [name for dataset]
-                                                 --num_att_layer [number of layers in WithinATT]
-                                                 --num_layers [number of layers]
-                                                 --bs [batch size]
-                                                 --lr [learning rate]
-                                                 --sampling [size of sampling incident hyperedges in aggregation at nodes]
-                                                 [--analyze_att  when running analysis.py]
-                                                 --scorer sm --scorer_num_layers 1 --dropout 0.7 --optimizer "adam" --k 0 --gamma 0.99 --dim_hidden 64 --dim_edge 128 --dim_vertex 128 --epochs 100 --test_epoch 5
-```
-
-### Run Benchmark Tasks
-
-You can run _all_ ten models for each dataset(DBLP,AMinerAuthor,emailEnron,emailEu,StackOverflowBiology,StackOverflowPhyscis) by
-
-```
-cd run
-./run_[DBLP,AMinerAuthor,emailEnron,emailEu,StackOverflowBiology,StackOverflowPhyscis].sh
-```
-
-We set hyperparameters of each model chosen by the best mean of Micro-F1 and Macro-F1 from the search space
-
-### Run Downstream Tasks
-
-We provide edge-dependent node labels predicted by WHATsNET as well as AST and HST in `train_results/`
-
-We also provide shell scripts for all-in-one process (train, predict and evaluate on the downstream task) in `run/DownstreamTask/`
-
-You can run three downstream tasks with WHATsNET and baselines by
-
-- **Ranking Aggregation**: In the `RankingAggregation` directory, run `ranking.py` for Halo2 game dataset and run `aminer_ranking.py` for AMiner dataset with author H-index
-- **Clustering**: In the `Clustering` directory, run `clustering.py` for DBLP and run `clustering_aminer.py` for AMiner
-- **Product Return Prediction**: In the `ProductReturnPred` directory, make synthetic dataset by `makedata/Simulate data.ipynb` and prepare dataset for training models by our benchmark task through `makedata/MakeHypergraph.ipynb`. After training models, run `makedata/prepare_predicted.py` and evaluate them by `script/main_prod.py`
-
-### Run Ablation Studies
-
-You can also run _all_ ablation studies of WHATsNET by
-
-```
-cd run
-./run_ablation.sh
-./run_ablation_centrality.sh
-```
-
----
+- [Dongwon Choi](https://github.com/chlehdwon) (School of Computing, KAIST)
+- [Sangwoo Kim](https://github.com/lodikim) (Graduate School of AI, KAIST)
+- [Dohun Lee](https://github.com/DoHunLee1) (Graduate School of AI, KAIST)
 
 ## Environment
 
-The environment of running codes is specified in `requirements.txt`
-Additionally, install required libraries following `install.sh`
+- Python >= 3.8
+- Pytorch: 2.2.1
+- Cuda: 11.8
+- GPU: RTX 4090
+
