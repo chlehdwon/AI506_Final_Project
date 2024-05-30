@@ -195,11 +195,6 @@ with torch.no_grad():
         nodeindices = blocks[-1].srcdata[dgl.NID]['node'][srcs]
         hedgeindices = blocks[-1].srcdata[dgl.NID]['edge'][dsts]
         nodelabels = blocks[-1].edges[('node','in','edge')].data['label'].long().to(device)
-        #print('nodeindices_in_batch: ', nodeindices_in_batch)
-        #print('hedgeindices_in_batch: ', hedgeindices_in_batch)
-        #print('nodeindices: ', nodeindices)
-        #print('hedgeindices: ', hedgeindices)
-        #print('nodelabels ', nodelabels)
         
         # Get Embedding
         if args.embedder == "whatsnet":
@@ -244,73 +239,11 @@ with torch.no_grad():
             pred_cls = torch.argmax(predictions, dim=1)
             total_label.append(nodelabels.detach())
         
-        '''
-        if args.scorer == "sm":
-            if args.dataset_name == 'task1':
-                unique_hedgeindices = torch.unique(hedgeindices)
-                label_indices = []
-                for i in range(len(hedgeindices)):
-                    if i == 0:
-                        label_indices.append(i)
-                        prev_value = hedgeindices[i]
-                    else:
-                        if hedgeindices[i] != prev_value:
-                            label_indices.append(i)
-                            prev_value = hedgeindices[i]
-
-                label_indices = torch.Tensor(label_indices).long()
-                nodelabels = nodelabels[label_indices]   
-                hembedding = e[unique_hedgeindices]
-                input_embeddings = hembedding
-                predictions = scorer(input_embeddings)
-
-            elif args.dataset_name == 'task2':
-                if opt == 'valid':
-                    print('nodelabels:', nodelabels)
-                    print('nodeindices:', nodeindices)
-                    valid_indices = torch.nonzero((nodelabels == 2) | (nodelabels == 3)).squeeze()
-                    #print('valid_indices: ', valid_indices)
-                    hedgeindices = hedgeindices[valid_indices]
-                    nodeindices = nodeindices[valid_indices]
-                    nodelabels = nodelabels[valid_indices]
-                    nodelabels = nodelabels - 2
-
-                    hembedding = e[hedgeindices]
-                    vembedding = v[nodeindices]
-                    input_embeddings = torch.cat([hembedding,vembedding], dim=1)
-                    predictions = scorer(input_embeddings)
-                elif opt == 'test':
-                    test_indices = torch.nonzero((nodelabels == -1)).squeeze()
-                    hedgeindices = hedgeindices[test_indices]
-                    nodeindices = nodeindices[test_indices]
-                    nodelabels = nodelabels[test_indices]
-                    nodelabels = nodelabels - 2
-
-                    hembedding = e[hedgeindices]
-                    vembedding = v[nodeindices]
-                    input_embeddings = torch.cat([hembedding,vembedding], dim=1)
-                    predictions = scorer(input_embeddings)
-              
-            else:
-                raise ValueError("Not supported data type")      
-        elif args.scorer == "im":
-            predictions, nodelabels = scorer(blocks[-1], v, e)
-        '''
-        #total_pred.append(predictions.detach())
-        #total_label.append(nodelabels.detach())
-        
         for v, h, vpred, vlab in zip(nodeindices.tolist(), hedgeindices.tolist(), pred_cls.detach().cpu().tolist(), nodelabels.detach().cpu().tolist()):
             assert v in data.hedge2node[h]
             for vorder in range(len(data.hedge2node[h])):
                 if data.hedge2node[h][vorder] == v:
                     assert vlab == data.hedge2nodepos[h][vorder]
-            '''
-            if args.binning > 0:
-                allpredictions[h][v] = data.binindex[int(vpred)]
-            elif args.dataset_name == "Etail":
-                allpredictions[h][v] = int(vpred) + 1.0
-            else:
-            '''
             allpredictions[h][v] = int(vpred)
         num_data += predictions.shape[0]
 
@@ -318,37 +251,6 @@ with torch.no_grad():
     #print('allpredictions: ', allpredictions)
     print('allpredictions length: ', len(allpredictions))
 
-    '''
-    # Calculate Accuracy (For Validation)
-    total_label = torch.cat(total_label, dim=0)
-    print(f'total label:  {total_label.shape}, {total_label}')
-    total_pred = torch.cat(total_pred)
-    print(f'total pred:  {total_pred.shape}, {total_pred}')
-    pred_cls = torch.argmax(total_pred, dim=1)
-    print(f'pred_cls:  {pred_cls.shape}, {pred_cls}')
-    acc = torch.eq(pred_cls, total_label).sum().item() / len(total_label)
-    print(f'accuracy: {acc}')
-
-    y_test = total_label.cpu().numpy()
-    pred = pred_cls.cpu().numpy()
-    
-    if opt == 'valid':
-        confusion, accuracy, precision, recall, f1_micro = utils.get_clf_eval(y_test, pred, avg='micro', outputdim=args.output_dim)
-        with open(savedir + "all_micro.txt", "w") as f:
-            f.write("Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(accuracy,precision,recall,f1_micro))
-        
-        confusion, accuracy, precision, recall, f1_macro = utils.get_clf_eval(y_test, pred, avg='macro', outputdim=args.output_dim)
-        with open(savedir + "all_confusion.txt", "w") as f:
-            for r in range(args.output_dim):
-                for c in range(args.output_dim):
-                    f.write(str(confusion[r][c]))
-                    if c == args.output_dim -1 :
-                        f.write("\n")
-                    else:
-                        f.write("\t")
-        with open(savedir + "all_macro.txt", "w") as f:               
-            f.write("Accuracy:{}/Precision:{}/Recall:{}/F1:{}\n".format(accuracy,precision,recall,f1_macro))
-    '''
     savedir = "predictions/" + args.dataset_name + "/"
     if os.path.isdir(savedir) is False:
         os.makedirs(savedir)
@@ -448,3 +350,37 @@ with torch.no_grad():
                 #v_idx = h_nodes.index(v_reindexing)
                 line.append(str(allpredictions[h][v_reindexing]))
                 f.write("\t".join(line) + "\n")
+
+    # Evaluation Accuracy
+    true = []
+    true_filename = f'{args.inputdir}/{args.dataset_name}/{args.dataset_name}_valid_label.txt'
+    with open(true_filename) as f:
+        for line in f.readlines():
+            line = line.rstrip()
+            line = tuple(map(int, line.split('\t')))
+            true_label = line[-1]
+            true.append(true_label)
+    true = np.array(true)
+    print(true)
+
+    pred = []
+    pred_filename = savedir + "valid_prediction.txt"
+    with open(pred_filename) as f:
+        for line in f.readlines():
+            line = line.rstrip()
+            line = tuple(map(int, line.split('\t')))
+            pred_label = line[-1]
+            pred.append(pred_label)
+    pred = np.array(pred)
+    print(pred)
+
+    confusion, accuracy, precision, recall, f1_macro = utils.get_clf_eval(true, pred, avg='macro', outputdim=args.output_dim)
+    with open(savedir + "validation_results.txt", "w") as f:
+        f.write(f"Validation Set Accuracy: {accuracy}\n")
+        for r in range(args.output_dim):
+            for c in range(args.output_dim):
+                f.write(str(confusion[r][c]))
+                if c == args.output_dim -1 :
+                    f.write("\n")
+                else:
+                    f.write("\t")
