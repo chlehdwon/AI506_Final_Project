@@ -16,7 +16,7 @@ class Task1transformer(nn.Module):
                      hidden=768, 
                      n_layers=12, 
                      attn_heads=12,
-                     embedding_type="cc",
+                     embedding_type="sum",
                      dropout=0.1):
         """
         :param vocab_size: vocab_size of total words
@@ -61,7 +61,7 @@ class Task1transformer(nn.Module):
           self.transformer_blocks = nn.ModuleList(
               [TransformerBlock(3 * hidden, attn_heads, self.feed_forward_hidden, dropout) for _ in range(n_layers)])
            
-        self.classifier = nn.Linear(3 * hidden, num_label)
+        self.classifier = nn.Linear(hidden, num_label)
 
     def forward(self, product, customer, color, size, group, inference=False):
         # attention masking for padded token
@@ -164,7 +164,7 @@ class Task2transformer(nn.Module):
                      hidden=768, 
                      n_layers=12, 
                      attn_heads=12,
-                     embedding_type="cc",
+                     embedding_type="sum",
                      dropout=0.1):
         """
         :param vocab_size: vocab_size of total words

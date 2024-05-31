@@ -260,60 +260,6 @@ exp_num = args.exp_num
 test_epoch = args.test_epoch
 plot_epoch = args.epochs
 
-if os.path.isfile(outputdir + "checkpoint.pt") and args.recalculate is False:
-    print("Start from checkpoint")
-elif (args.recalculate is False and args.evaltype == "valid") and os.path.isfile(outputdir + "log_valid_micro.txt"):
-    if os.path.isfile(outputdir + "log_valid_micro.txt"):
-        max_acc = 0
-        cur_patience = 0
-        epoch = 0
-        with open(outputdir + "log_valid_micro.txt", "r") as f:
-            for line in f.readlines():
-                ep_str = line.rstrip().split(":")[0].split(" ")[0]
-                acc_str = line.rstrip().split(":")[-1]
-                epoch = int(ep_str)
-                if max_acc < float(acc_str):
-                    cur_patience = 0
-                    max_acc = float(acc_str)
-                else:
-                    cur_patience += 1
-                if cur_patience > args.patience:
-                    break
-        if cur_patience > args.patience or epoch == args.epochs:
-            sys.exit("Already Run by log valid micro txt")
-else:
-    if os.path.isfile(outputdir + "log_train.txt"):
-        os.remove(outputdir + "log_train.txt")
-    if os.path.isfile(outputdir + "log_valid_micro.txt"):
-        os.remove(outputdir + "log_valid_micro.txt")
-    if os.path.isfile(outputdir + "log_valid_confusion.txt"):
-        os.remove(outputdir + "log_valid_confusion.txt")
-    if os.path.isfile(outputdir + "log_valid_macro.txt"):
-        os.remove(outputdir + "log_valid_macro.txt")
-    if os.path.isfile(outputdir + "log_test_micro.txt"):
-        os.remove(outputdir + "log_test_micro.txt")
-    if os.path.isfile(outputdir + "log_test_confusion.txt"):
-        os.remove(outputdir + "log_test_confusion.txt")
-    if os.path.isfile(outputdir + "log_test_macro.txt"):
-        os.remove(outputdir + "log_test_macro.txt")
-        
-    if os.path.isfile(outputdir + "initembedder.pt"):
-        os.remove(outputdir + "initembedder.pt")
-    if os.path.isfile(outputdir + "customerembedder.pt"):
-        os.remove(outputdir + "customerembedder.pt")
-    if os.path.isfile(outputdir + "colorembedder.pt"):
-        os.remove(outputdir + "colorembedder.pt")
-    if os.path.isfile(outputdir + "sizeembedder.pt"):
-        os.remove(outputdir + "sizeembedder.pt")
-    if os.path.isfile(outputdir + "groupembedder.pt"):
-        os.remove(outputdir + "groupembedder.pt")
-    if os.path.isfile(outputdir + "embedder.pt"):
-        os.remove(outputdir + "embedder.pt")
-    if os.path.isfile(outputdir + "scorer.pt"):
-        os.remove(outputdir + "scorer.pt")
-    if os.path.isfile(outputdir + "evaluation.txt"):
-        os.remove(outputdir + "evaluation.txt")
-            
 # Data -----------------------------------------------------------------------------
 data = dl.Hypergraph(args, dataset_name)
 if args.dataset_name == 'task1':

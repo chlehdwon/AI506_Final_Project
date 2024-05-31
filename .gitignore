@@ -19,3 +19,4 @@ AI506_baseline/task2/task2_train_label.txt
 AI506_baseline/task2/task2_valid_label.txt
 AI506_baseline/wandb
 train.sh
+predictions

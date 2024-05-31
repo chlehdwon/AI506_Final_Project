@@ -2,7 +2,7 @@ import os
 import torch
 import argparse
 import numpy as np
-from bert_pytorch.model import Task2transformer
+from transformer_pytorch.model import Task2transformer
 from task2.data_preprocess import Task2_Data
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
@@ -72,65 +72,69 @@ def train():
                              size_vocab_size=args.size_vocab_size,
                              group_vocab_size=args.group_vocab_size).to(device)
     optim = torch.optim.Adam(params=model.parameters(), lr=args.lr, betas=(args.beta1, 0.999))
-    
-    start_epoch = 0
-    if args.resume:
-        model_checkpoint = torch.load(f"./task2_checkpoint/{args.resume_epoch}.pth")
-        model.load_state_dict(model_checkpoint['model_state_dict'])
-        optim.load_state_dict(model_checkpoint['optim_state_dict'])
-        start_epoch = int(model_checkpoint['epoch'])
-    
-    criterion = nn.CrossEntropyLoss(ignore_index=-100)
-    best_accuracy = 0
-    
-    if args.wandb:
-        wandb.init(project='AI506_task2')
 
-    for epoch in range(start_epoch, args.epoch):
-        pbar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
-        for step, data in pbar:
-            model.train()
-            product, customer, color, size, group, label = data
-            product = product.to(device)
-            customer = customer.to(device)
-            color = color.to(device)
-            size = size.to(device)
-            group = group.to(device)
-            label = label.to(device)
+    model_checkpoint = torch.load(f"./task2_checkpoint/best.pth")
+    model.load_state_dict(model_checkpoint['model_state_dict'])
+    
+    # start_epoch = 0
+    # if args.resume:
+    #     model_checkpoint = torch.load(f"./task2_checkpoint/{args.resume_epoch}.pth")
+    #     model.load_state_dict(model_checkpoint['model_state_dict'])
+    #     optim.load_state_dict(model_checkpoint['optim_state_dict'])
+    #     start_epoch = int(model_checkpoint['epoch'])
+    
+    # criterion = nn.CrossEntropyLoss(ignore_index=-100)
+    # best_accuracy = 0
+    
+    # if args.wandb:
+    #     wandb.init(project='AI506_task2')
+
+    # for epoch in range(start_epoch, args.epoch):
+    #     pbar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
+    #     for step, data in pbar:
+    #         model.train()
+    #         product, customer, color, size, group, label = data
+    #         product = product.to(device)
+    #         customer = customer.to(device)
+    #         color = color.to(device)
+    #         size = size.to(device)
+    #         group = group.to(device)
+    #         label = label.to(device)
             
-            output = model(product, customer, color, size, group)
+    #         output = model(product, customer, color, size, group)
             
-            loss = criterion(output, label)
-            optim.zero_grad()
-            loss.backward()
-            optim.step()
+    #         loss = criterion(output, label)
+    #         optim.zero_grad()
+    #         loss.backward()
+    #         optim.step()
             
-            if args.wandb:
-                wandb.log({'loss': loss})
+    #         if args.wandb:
+    #             wandb.log({'loss': loss})
             
-            description = f'Epoch: {epoch+1}/{args.epoch} || Step: {step+1}/{len(train_dataloader)} || Loss: {round(loss.item(), 4)}'
-            pbar.set_description(description)
+    #         description = f'Epoch: {epoch+1}/{args.epoch} || Step: {step+1}/{len(train_dataloader)} || Loss: {round(loss.item(), 4)}'
+    #         pbar.set_description(description)
         
-        validation_accuracy = validation(model, args)
+    validation_accuracy = validation(model, args)
         
-        if args.wandb:
-            wandb.log({'validation_accuracy': validation_accuracy})
+        # if args.wandb:
+        #     wandb.log({'validation_accuracy': validation_accuracy})
         
-        torch.save({
-            'epoch': epoch,
-            'val_accuracy': validation_accuracy,
-            'model_state_dict': model.state_dict(),
-            'optim_state_dict': optim.state_dict(),
-        }, f"./task2_checkpoint/{epoch}.pth")
+        # torch.save({
+        #     'epoch': epoch,
+        #     'val_accuracy': validation_accuracy,
+        #     'model_state_dict': model.state_dict(),
+        #     'optim_state_dict': optim.state_dict(),
+        # }, f"./task2_checkpoint/{epoch}.pth")
         
-        if best_accuracy < validation_accuracy:
-            best_accuracy = validation_accuracy
-            torch.save({
-                'epoch': epoch,
-                'val_accuracy': validation_accuracy,
-                'model_state_dict': model.state_dict(),
-                'optim_state_dict': optim.state_dict(),
-            }, f"./task2_checkpoint/best.pth")
+        # if best_accuracy < validation_accuracy:
+        #     best_accuracy = validation_accuracy
+        #     torch.save({
+        #         'epoch': epoch,
+        #         'val_accuracy': validation_accuracy,
+        #         'model_state_dict': model.state_dict(),
+        #         'optim_state_dict': optim.state_dict(),
+        #     }, f"./task2_checkpoint/best.pth")
+    print(validation_accuracy)
             
             
         
