@@ -9,6 +9,7 @@ import os
 import sys
 import utils
 from tqdm import tqdm
+import csv
 from collections import defaultdict
 import time
 import argparse
@@ -35,7 +36,10 @@ from model.layer import FC, Wrap_Embedding
 initialization = "rw"
 args = utils.parse_args()
 outputdir = "results_test/" + args.dataset_name + "_" + str(args.k) + "/" + initialization + "/"
-outputdir += args.model_name + "/" + args.param_name +"/" + str(args.seed) + "/" + "custom_embedding/"
+if not args.custom:
+    outputdir += args.model_name + "/" + args.param_name +"/" + str(args.seed) + "/"
+else:
+    outputdir += args.model_name + "/" + args.param_name +"/" + str(args.seed) + "/" + "custom_embedding/"
 if os.path.isdir(outputdir) is False:
     os.makedirs(outputdir)
 print("OutputDir = " + outputdir)
@@ -111,7 +115,7 @@ initembedder.weight = nn.Parameter(A)
 
 # Make embedding with feature
 # 0-342037
-customerembedder = Wrap_Embedding(data.numcustomers, 24, scale_grad_by_freq=False, sparse=False).to(device)
+customerembedder = Wrap_Embedding(data.numcustomers, 48, scale_grad_by_freq=False, sparse=False).to(device)
 # 0-641
 colorembedder = Wrap_Embedding(data.numcolors, 8, scale_grad_by_freq=False, sparse=False).to(device)
 # 0-28
@@ -120,7 +124,7 @@ sizeembedder = Wrap_Embedding(data.numsizes, 8, scale_grad_by_freq=False, sparse
 groupembedder = Wrap_Embedding(data.numgroups, 8, scale_grad_by_freq=False, sparse=False).to(device)
 # Add dimension for embeddings
 args.input_vdim = args.input_vdim + 24
-args.input_edim = args.input_edim + 24
+# args.input_edim = args.input_edim + 24
 
 print("Model:", args.embedder)
 # model init
@@ -212,8 +216,13 @@ with torch.no_grad():
                 size_feat, _ = sizeembedder(data.node2size[input_nodes['node']].long().to(device))
                 group_feat, _ = groupembedder(data.node2group[input_nodes['node']].long().to(device))
                 v_feat = torch.concat((v_feat, color_feat, size_feat, group_feat), dim=1)
-                e_feat = torch.concat((e_feat, customer_feat), dim=1)
-                v, e = embedder(blocks, v_feat, e_feat)
+                # e_feat = torch.concat((e_feat, customer_feat), dim=1)
+                # v, e = embedder(blocks, v_feat, e_feat)
+                if not args.custom:
+                    v, e = embedder(blocks, v_feat, e_feat, None, None)
+                else:
+                    v, e = embedder(blocks, v_feat, e_feat, data, customerembedder)
+
         else:
             v_feat, recon_loss = initembedder(input_nodes['node'].to(device))
             e_feat = data.e_feat[input_nodes['edge']].to(device)
@@ -251,7 +260,10 @@ with torch.no_grad():
     #print('allpredictions: ', allpredictions)
     print('allpredictions length: ', len(allpredictions))
 
-    savedir = "predictions/" + args.dataset_name + "/"
+    if args.custom:
+        savedir = "predictions/" + args.dataset_name + "/" + "custom_embedding" + "/"
+    else:
+        savedir = "predictions/" + args.dataset_name + "/"
     if os.path.isdir(savedir) is False:
         os.makedirs(savedir)
 
@@ -291,13 +303,20 @@ with torch.no_grad():
                 test_data.append(int(line))
         print(f'test_data: {test_data[:10]}, length {len(test_data)}')
         # 2-2. Make Prediction
-        with open(savedir + "test_prediction.csv", "w") as f:
+        with open(savedir + "test_prediction.txt", "w") as f:
             for h in test_data:
                 line = []
                 v = data.hedge2node[h][0]   # get first node
                 line.append(str(h))
                 line.append(str(allpredictions[h][v]))
                 f.write("\t".join(line) + "\n")
+        # 2-3. Change to CSV
+        input = open(savedir + "test_prediction.txt").read()
+        lines = input.split('\n')
+        with open(savedir + "test_prediction.csv", "w") as f:
+            writer = csv.writer(f)
+            for line in lines:
+                writer.writerow(line.split('\t'))
 
     # Task2 Prediction
     elif args.dataset_name == 'task2':
@@ -337,7 +356,7 @@ with torch.no_grad():
                 test_data.append(line)
         print(f'test_data: {test_data[:10]}, length {len(test_data)}')
         # 2-2. Make Prediction
-        with open(savedir + "test_prediction.csv", "w") as f:
+        with open(savedir + "test_prediction.txt", "w") as f:
             for h, v in test_data:
                 line = []
                 line.append(str(h))
@@ -350,6 +369,13 @@ with torch.no_grad():
                 #v_idx = h_nodes.index(v_reindexing)
                 line.append(str(allpredictions[h][v_reindexing]))
                 f.write("\t".join(line) + "\n")
+        # 2-3. Change to CSV
+        input = open(savedir + "test_prediction.txt").read()
+        lines = input.split('\n')
+        with open(savedir + "test_prediction.csv", "w") as f:
+            writer = csv.writer(f)
+            for line in lines:
+                writer.writerow(line.split('\t'))
 
     # Evaluation Accuracy
     true = []

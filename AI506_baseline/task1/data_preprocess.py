@@ -54,17 +54,17 @@ class Task1_Data(Dataset):
         total_product = 0
         max_len = 46
         product = [1]
-        customer = []
-        color = []
-        size = []
-        group = []
+        customer = [1]
+        color = [1]
+        size = [1]
+        group = [1]
         products = self.order_dict[order_number]
         for data in products:
             product.append(data[0] + 2)
-            customer.append(data[1] + 1)
-            color.append(data[2] + 1)
-            size.append(data[3] + 1)
-            group.append(data[4] + 1)
+            customer.append(data[1] + 2)
+            color.append(data[2] + 2)
+            size.append(data[3] + 2)
+            group.append(data[4] + 2)
             total_product += 1
         
         for _ in range(max_len - total_product):
