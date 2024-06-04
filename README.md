@@ -4,8 +4,9 @@
 
 > ABCDE-NET: **A**ttention **B**lock with **C**ustomer **D**ependency for **E**-commerce **NET**work
 
-## Project Summary
+<img width="1264" alt="image" src="https://github.com/chlehdwon/AI506_Final_Project/assets/68576681/953f001d-01ed-4622-b8e0-544cfa0c5bdb">
 
+## Project Summary
 The ultimate goal of this project is to practice data mining research by predicting product returns in e-commerce settings.
 
 Our method is designed to solve 2 E-commerce Product Return Prediction tasks: (1) Order Return Prediction and (2) Product Return Prediction.
