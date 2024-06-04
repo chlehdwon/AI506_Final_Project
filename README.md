@@ -2,6 +2,8 @@
 
 > <b>KAIST 2024 Spring AI506: Data Mining and Search</b>
 
+> ABCDE-NET: **A**ttention **B**lock with **C**ustomer **D**ependency for **E**-commerce **NET**work
+
 ## Project Summary
 
 The ultimate goal of this project is to practice data mining research by predicting product returns in e-commerce settings.
