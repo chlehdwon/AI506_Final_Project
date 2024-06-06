@@ -15,7 +15,7 @@ It models complex relations between orders and products as **hypergraphs** based
 
 The contributions of this project are the following:
 
-- Our proposed method is a effective method for prediction of product returns based on hypergraphs.
+- Our proposed method is an effective method for prediction of product returns based on hypergraphs.
 - It is effective and comparable to naive methods such as random guessing, SVM, or random forests.
 - Initialization of node embeddings from product features (color, size, product group) which are concatenated to random walk initialization.
 - Implementation of Customer-dependent MAB for consideration of customer preference on product return.
@@ -37,7 +37,7 @@ The contributions of this project are the following:
 
 ### Train
 
-You can train our model for each task by following commands:
+You can train our model for each task with the following commands:
 
 ```bash:train.sh
 // Task 1
@@ -49,7 +49,7 @@ python train.py --dataset_name task2 --output_dim 2 --vorder_input "degree_nodec
 
 ### Predict
 
-You can produce predictions from our model for each task by following commands:
+You can produce predictions from our model for each task with the following commands:
 
 ```bash:predict.sh
 // Task 1
